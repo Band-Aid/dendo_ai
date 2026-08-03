@@ -1,0 +1,376 @@
+/* ============================================================
+   Manuscript — Dendo design system
+   Editorial analytical aesthetic for the notebook-first product.
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300..700;1,6..72,300..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+JP:wght@400;500;600;700&family=Noto+Serif+JP:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+:root {
+  /* Surfaces */
+  --paper:        #FAF7F2;
+  --paper-deep:   #F3EFE7;
+  --surface:      #FFFFFF;
+  --subtle:       #F3EFE7;
+  --subtle-2:     #ECE6D9;
+
+  /* Ink */
+  --ink:          #141513;
+  --ink-2:        #3C3A35;
+  --muted:        #79766E;
+  --mute-low:     #A8A398;
+
+  /* Rule */
+  --rule:         #E8E2D6;
+  --rule-soft:    #EFEADB;
+  --rule-strong:  #D0C8B8;
+
+  /* Accent — terracotta */
+  --accent:       #A8412B;
+  --accent-deep:  #7C2A18;
+  --accent-soft:  #F3E4DD;
+  --accent-glow:  rgba(168, 65, 43, 0.12);
+
+  /* Data signal */
+  --positive:     #1E4D2B;
+  --positive-bg:  #E7EFE5;
+  --warning:      #9C6A12;
+  --warning-bg:   #F7EBD0;
+  --danger:       #8B2F2F;
+  --danger-bg:    #F4DED9;
+
+  /* Code surface */
+  --code-bg:      #1A1816;
+  --code-bg-2:    #232019;
+  --code-fg:      #EFE9DD;
+  --code-rule:    #2E2A24;
+  --code-muted:   #8C8578;
+
+  /* Type — pairs that handle EN + JA gracefully.
+     Latin glyphs come from Newsreader / IBM Plex Sans;
+     Japanese glyphs fall through to Noto Serif JP / IBM Plex Sans JP
+     and then to OS-installed Hiragino / Yu fallbacks. */
+  --serif: 'Newsreader', 'Noto Serif JP', 'Hiragino Mincho ProN', 'Yu Mincho', 'Iowan Old Style', 'Georgia', serif;
+  --sans:  'IBM Plex Sans', 'IBM Plex Sans JP', 'Hiragino Sans', 'Yu Gothic UI', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono:  'JetBrains Mono', 'IBM Plex Mono', ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+
+  /* Radii */
+  --r-sm: 4px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-xl: 18px;
+
+  /* Topbar height — used by notebook full-bleed layout. Kept slim so the
+     notebook canvas reclaims as much vertical space as possible; the topbar
+     also hides itself when the notebook body scrolls past ~80px. */
+  --topbar-h: 44px;
+
+  /* Shadows — restrained */
+  --shadow-1: 0 1px 0 rgba(20, 21, 19, 0.04);
+  --shadow-2: 0 2px 8px rgba(60, 50, 30, 0.06), 0 0 0 1px var(--rule);
+  --shadow-pop: 0 8px 24px rgba(60, 40, 20, 0.08), 0 0 0 1px var(--rule);
+}
+
+* { box-sizing: border-box; }
+
+html, body, #__nuxt {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.6;
+  font-variant-ligatures: contextual;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  letter-spacing: -0.003em;
+  text-rendering: optimizeLegibility;
+}
+
+:lang(ja) {
+  letter-spacing: 0;
+}
+
+a { color: inherit; text-decoration: none; }
+
+::selection { background: var(--accent-soft); color: var(--accent-deep); }
+
+/* ============================================================
+   Display headings — serif with optical character
+   ============================================================ */
+
+.display, .h-display {
+  font-family: var(--serif);
+  font-optical-sizing: auto;
+  font-weight: 420;
+  font-variation-settings: 'opsz' 96, 'SOFT' 50, 'WONK' 0;
+  letter-spacing: -0.02em;
+  line-height: 1.04;
+  color: var(--ink);
+}
+
+h1.editorial, .h-1 {
+  font-family: var(--serif);
+  font-weight: 460;
+  font-variation-settings: 'opsz' 48, 'SOFT' 30;
+  letter-spacing: -0.018em;
+  line-height: 1.1;
+  margin: 0;
+  color: var(--ink);
+}
+
+.eyebrow {
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.mono { font-family: var(--mono); font-feature-settings: 'zero', 'ss01'; }
+
+/* ============================================================
+   Ant Design overrides — paper-toned, no purple gradients,
+   serif-meets-sans hierarchy.
+   ============================================================ */
+
+/* Buttons */
+.ant-btn {
+  font-family: var(--sans);
+  font-weight: 500;
+  font-size: 14px;
+  letter-spacing: -0.005em;
+  border-radius: var(--r-sm);
+  transition: all 0.15s ease;
+}
+.ant-btn-sm { font-size: 13px; }
+.ant-btn-lg { font-size: 15.5px; }
+.ant-btn-primary {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+  box-shadow: none;
+}
+.ant-btn-primary:not(:disabled):hover {
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+  color: #fff !important;
+}
+.ant-btn-primary:not(:disabled):active {
+  background: var(--accent-deep) !important;
+  border-color: var(--accent-deep) !important;
+}
+.ant-btn-default {
+  background: transparent;
+  border-color: var(--rule-strong);
+  color: var(--ink);
+  box-shadow: none;
+}
+.ant-btn-default:not(:disabled):hover {
+  background: var(--subtle) !important;
+  border-color: var(--ink-2) !important;
+  color: var(--ink) !important;
+}
+.ant-btn-text:not(:disabled):hover {
+  background: var(--subtle) !important;
+}
+.ant-btn-dangerous.ant-btn-text:hover {
+  background: var(--danger-bg) !important;
+  color: var(--danger) !important;
+}
+.ant-btn-link { color: var(--accent); }
+
+/* Inputs */
+.ant-input,
+.ant-input-affix-wrapper,
+.ant-input-number,
+.ant-select-selector,
+.ant-select-single .ant-select-selector,
+.ant-picker {
+  background: var(--surface) !important;
+  border-color: var(--rule) !important;
+  border-radius: var(--r-sm) !important;
+  color: var(--ink) !important;
+  font-family: var(--sans);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.ant-input:focus,
+.ant-input-focused,
+.ant-input-affix-wrapper:focus,
+.ant-input-affix-wrapper-focused,
+.ant-select-focused .ant-select-selector,
+.ant-input-number-focused,
+.ant-picker-focused {
+  border-color: var(--ink) !important;
+  box-shadow: 0 0 0 3px var(--accent-glow) !important;
+}
+.ant-input::placeholder { color: var(--mute-low); }
+
+/* Cards */
+.ant-card {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-lg);
+  box-shadow: none;
+}
+.ant-card-head {
+  border-bottom: 1px solid var(--rule);
+  padding: 14px 20px;
+  min-height: auto;
+}
+.ant-card-head-title {
+  font-family: var(--serif);
+  font-weight: 500;
+  font-variation-settings: 'opsz' 36, 'SOFT' 30;
+  font-size: 20px;
+  letter-spacing: -0.012em;
+  color: var(--ink);
+  padding: 0;
+}
+.ant-card-body { padding: 20px; }
+
+/* Tabs */
+.ant-tabs-tab {
+  font-family: var(--sans);
+  font-weight: 500;
+  font-size: 14.5px;
+  color: var(--muted);
+  padding: 10px 0 !important;
+}
+.ant-tabs-tab + .ant-tabs-tab { margin-left: 28px !important; }
+.ant-tabs-tab:hover { color: var(--ink); }
+.ant-tabs-tab.ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: var(--ink) !important;
+  font-weight: 600;
+}
+.ant-tabs-ink-bar { background: var(--accent) !important; height: 2px !important; }
+.ant-tabs-top > .ant-tabs-nav::before { border-bottom-color: var(--rule) !important; }
+
+/* Tables */
+.ant-table {
+  background: transparent;
+  font-family: var(--sans);
+  font-size: 14px;
+}
+.ant-table-thead > tr > th {
+  background: var(--subtle) !important;
+  color: var(--ink-2) !important;
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--rule-strong) !important;
+  padding: 10px 14px !important;
+}
+.ant-table-thead > tr > th::before { display: none !important; }
+.ant-table-tbody > tr > td {
+  border-bottom: 1px solid var(--rule-soft) !important;
+  padding: 9px 14px !important;
+  color: var(--ink);
+}
+.ant-table-tbody > tr:hover > td {
+  background: var(--subtle) !important;
+}
+
+/* Modal */
+.ant-modal-content {
+  background: var(--paper);
+  border-radius: var(--r-lg);
+  border: 1px solid var(--rule);
+  box-shadow: 0 24px 64px rgba(40, 30, 15, 0.18);
+  padding: 0;
+}
+.ant-modal-header {
+  background: transparent;
+  padding: 22px 24px 14px;
+  border-bottom: 1px solid var(--rule);
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+  margin: 0;
+}
+.ant-modal-title {
+  font-family: var(--serif);
+  font-weight: 500;
+  font-variation-settings: 'opsz' 36, 'SOFT' 30;
+  font-size: 24px;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+}
+.ant-modal-body { padding: 20px 24px 8px; }
+.ant-modal-footer { padding: 14px 24px 18px; border-top: 1px solid var(--rule); }
+.ant-modal-close { color: var(--muted); }
+
+/* Form */
+.ant-form-item-label > label { color: var(--ink-2); font-weight: 500; font-size: 13.5px; letter-spacing: 0.005em; }
+.ant-form-item-explain, .ant-form-item-extra { color: var(--muted); font-size: 13px; }
+.ant-input, .ant-input-affix-wrapper, .ant-input-number, .ant-select-selector { font-size: 14.5px !important; }
+
+/* Tags */
+.ant-tag {
+  border-radius: var(--r-sm);
+  font-weight: 500;
+  font-family: var(--sans);
+  border: 1px solid transparent;
+  padding: 1px 7px;
+}
+.ant-tag-green { background: var(--positive-bg); color: var(--positive); border-color: rgba(30,77,43,0.18); }
+.ant-tag-red { background: var(--danger-bg); color: var(--danger); border-color: rgba(139,47,47,0.18); }
+
+/* Switch */
+.ant-switch-checked { background: var(--accent) !important; }
+.ant-switch:not(.ant-switch-checked) { background: var(--rule-strong); }
+
+/* Tooltip */
+.ant-tooltip-inner {
+  background: var(--ink) !important;
+  color: var(--paper) !important;
+  font-family: var(--sans);
+  font-size: 12px;
+  border-radius: var(--r-sm);
+  padding: 5px 9px;
+}
+.ant-tooltip-arrow::before { background: var(--ink) !important; }
+
+/* Empty */
+.ant-empty-description { color: var(--muted); font-family: var(--sans); }
+
+/* Alerts */
+.ant-alert {
+  border-radius: var(--r-md);
+  border: 1px solid var(--rule);
+  padding: 12px 14px;
+  font-family: var(--sans);
+}
+.ant-alert-info { background: var(--subtle); border-color: var(--rule-strong); }
+.ant-alert-info .ant-alert-icon { color: var(--ink-2); }
+.ant-alert-success { background: var(--positive-bg); border-color: rgba(30,77,43,0.2); }
+.ant-alert-success .ant-alert-icon { color: var(--positive); }
+
+/* Dropdown menu */
+.ant-dropdown-menu {
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-md);
+  box-shadow: 0 10px 30px rgba(40,30,15,0.10);
+  padding: 4px;
+}
+.ant-dropdown-menu-item { border-radius: var(--r-sm); font-family: var(--sans); }
+.ant-dropdown-menu-item:hover { background: var(--subtle) !important; }
+
+/* Message */
+.ant-message-notice-content {
+  font-family: var(--sans);
+  border-radius: var(--r-md);
+  border: 1px solid var(--rule);
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: 0 12px 28px rgba(40,30,15,0.10);
+}
+
+/* Spin */
+.ant-spin-dot-item { background: var(--accent); }
+
+/* Custom scrollbars in app */
+.ms-scroll::-webkit-scrollbar { width: 10px; height: 10px; }
+.ms-scroll::-webkit-scrollbar-track { background: transparent; }
+.ms-scroll::-webkit-scrollbar-thumb { background: var(--rule-strong); border-radius: 10px; border: 2px solid var(--paper); }
+.ms-scroll::-webkit-scrollbar-thumb:hover { background: var(--muted); }

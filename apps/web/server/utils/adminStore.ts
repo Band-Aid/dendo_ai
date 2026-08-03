@@ -1,0 +1,216 @@
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { resolve } from 'node:path'
+import { dbGetJson, dbSetJson } from '../db/client'
+import type { McpServerConfig } from '~/types/mcp'
+
+export interface ProviderConfig {
+  provider: 'anthropic' | 'openai' | 'azure_openai'
+  enabled: boolean
+  apiKey?: string
+  hasApiKey?: boolean
+  endpoint?: string
+  apiVersion?: string
+  deployment?: string
+}
+
+export interface AgentProfile {
+  id: string
+  name: string
+  purpose: string
+  systemPrompt: string
+  enabledTools: string[]
+  guardrails: string[]
+  enabled: boolean
+  provider: 'anthropic' | 'openai' | 'azure_openai'
+  model: string
+}
+
+export interface PendoSettings {
+  integrationKey?: string
+  hasIntegrationKey?: boolean
+  apiEndpoint?: string
+  defaultAppId?: number
+}
+
+export interface CustomSkill {
+  id: string
+  name: string
+  triggers: string
+  content: string
+  enabled: boolean
+}
+
+export interface GeneralSettings {
+  maxTokens?: number
+  /**
+   * Free-form instructions the user wants the agent to follow on every turn
+   * in this workspace. Injected into the dynamic (uncached) section of the
+   * system prompt by `buildSystemPrompt`, so edits take effect immediately
+   * without invalidating the cached prefix.
+   */
+  agentInstructions?: string
+  /**
+   * Workspace-defined skills. Each enabled skill is injected into the system
+   * prompt (uncached layer) along with its trigger description so the agent
+   * can match user requests to the right one. Different workspaces keep their
+   * own templates here — e.g. their own onboarding maturity matrix, QBR
+   * outline, etc.
+   */
+  customSkills?: CustomSkill[]
+}
+
+export interface AdminState {
+  providers: ProviderConfig[]
+  agents: AgentProfile[]
+  pendo: PendoSettings
+  settings: GeneralSettings
+  mcpServers?: McpServerConfig[]
+}
+
+const defaultState: AdminState = {
+  providers: [
+    { provider: 'anthropic', enabled: false },
+    { provider: 'openai', enabled: false },
+    { provider: 'azure_openai', enabled: false }
+  ],
+  agents: [],
+  pendo: {},
+  settings: { maxTokens: 2000 }
+}
+
+function dataPath() {
+  return resolve(process.cwd(), '.data', 'admin.json')
+}
+
+async function ensureDir() {
+  await mkdir(resolve(process.cwd(), '.data'), { recursive: true })
+}
+
+export async function readAdminState(orgId = 'default'): Promise<AdminState> {
+  const kvKey = `org:${orgId}:admin_state`
+
+  // Use null as the sentinel so we can distinguish "key not in DB" from
+  // "key in DB with empty/default content".
+  const fromDb = dbGetJson<AdminState | null>(kvKey, null)
+
+  // If the key exists in the DB, return its content (merging missing fields from defaults).
+  if (fromDb !== null) {
+    return {
+      providers: fromDb.providers ?? defaultState.providers,
+      agents: fromDb.agents ?? defaultState.agents,
+      pendo: fromDb.pendo ?? defaultState.pendo,
+      settings: fromDb.settings ?? defaultState.settings,
+      mcpServers: fromDb.mcpServers ?? []
+    }
+  }
+
+  // For the default org only: backward-compatible fallback to legacy key or JSON file.
+  if (orgId === 'default') {
+    const legacy = dbGetJson<AdminState | null>('admin_state', null)
+    if (legacy !== null) {
+      const normalized = {
+        providers: legacy.providers ?? defaultState.providers,
+        agents: legacy.agents ?? defaultState.agents,
+        pendo: legacy.pendo ?? defaultState.pendo,
+        settings: legacy.settings ?? defaultState.settings,
+        mcpServers: legacy.mcpServers ?? []
+      }
+      // Migrate to org-scoped key
+      dbSetJson(kvKey, normalized)
+      return normalized
+    }
+
+    // Backward-compatible fallback: import existing JSON file once.
+    try {
+      const raw = await readFile(dataPath(), 'utf8')
+      const parsed = JSON.parse(raw) as AdminState
+      const normalized = {
+        providers: parsed.providers ?? defaultState.providers,
+        agents: parsed.agents ?? defaultState.agents,
+        pendo: parsed.pendo ?? defaultState.pendo,
+        settings: parsed.settings ?? defaultState.settings,
+        mcpServers: parsed.mcpServers ?? []
+      }
+      dbSetJson(kvKey, normalized)
+      return normalized
+    } catch {
+      // Fall through to default state
+    }
+  }
+
+  return structuredClone(defaultState)
+}
+
+export async function writeAdminState(next: AdminState, orgId = 'default'): Promise<void> {
+  dbSetJson(`org:${orgId}:admin_state`, next)
+
+  // Keep legacy file write for the default org for compatibility during rollout.
+  if (orgId === 'default') {
+    await ensureDir()
+    await writeFile(dataPath(), JSON.stringify(next, null, 2), 'utf8')
+  }
+}
+
+export function maskProviderSecrets(provider: ProviderConfig): ProviderConfig {
+  const hasApiKey = Boolean(provider.apiKey)
+  if (!hasApiKey) return { ...provider, hasApiKey: false }
+  return { ...provider, apiKey: undefined, hasApiKey: true }
+}
+
+export function maskPendoSecrets(settings: PendoSettings): PendoSettings {
+  const hasIntegrationKey = Boolean(settings.integrationKey)
+  if (!hasIntegrationKey) return { ...settings, hasIntegrationKey: false }
+  return { ...settings, integrationKey: undefined, hasIntegrationKey: true }
+}
+
+export function getDefaultAppId(settings: PendoSettings): number | undefined {
+  return settings.defaultAppId
+}
+
+/**
+ * Strip secret material from an MCP server config before returning to the client.
+ * Replace tokens/secrets with a boolean flag so the UI can render auth status.
+ */
+export function maskMcpServer(server: McpServerConfig): McpServerConfig {
+  const out: McpServerConfig = { ...server }
+  if (server.oauth) {
+    out.hasOAuthTokens = Boolean(server.oauth.tokens?.accessToken)
+    out.oauth = {
+      metadata: server.oauth.metadata,
+      client: server.oauth.client
+        ? { ...server.oauth.client, clientSecret: undefined, registrationAccessToken: undefined }
+        : undefined,
+      tokens: undefined,
+      needsAuth: server.oauth.needsAuth,
+      lastError: server.oauth.lastError
+    }
+  } else {
+    out.hasOAuthTokens = false
+  }
+  return out
+}
+
+/**
+ * Merge an incoming MCP server config from the client with the existing stored value,
+ * preserving server-only secrets (oauth tokens, client secret) that the client never sees.
+ */
+export function mergeMcpServer(incoming: McpServerConfig, existing: McpServerConfig | undefined): McpServerConfig {
+  if (!existing?.oauth) return { ...incoming }
+  const preserved = { ...incoming, oauth: { ...(incoming.oauth ?? {}) } }
+  preserved.oauth = {
+    ...preserved.oauth,
+    metadata: incoming.oauth?.metadata ?? existing.oauth.metadata,
+    client: existing.oauth.client
+      ? {
+          ...existing.oauth.client,
+          // Allow client to update redirectUri/scope from UI if they sent them
+          redirectUri: incoming.oauth?.client?.redirectUri ?? existing.oauth.client.redirectUri,
+          scope: incoming.oauth?.client?.scope ?? existing.oauth.client.scope
+        }
+      : incoming.oauth?.client,
+    tokens: existing.oauth.tokens,
+    needsAuth: existing.oauth.needsAuth,
+    lastError: existing.oauth.lastError
+  }
+  return preserved
+}

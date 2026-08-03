@@ -1,0 +1,24 @@
+__pycache__/
+venv/
+ENV/
+env/
+.venv/
+.env*
+.venv
+__pycache__/
+.DS_Store
+results/
+node_modules/
+apps/web/node_modules/
+apps/web/.nuxt/
+apps/web/.output/
+apps/web/.data/
+.github/agents/
+.github/instructions/
+# Internal playbook — keep it local, it is not a sample to publish.
+.github/skills/onboarding-maturity/
+/tmp
+# Docs are local scratch by default, except the README's screenshots — those
+# have to be committed or the images 404 on GitHub.
+docs/*
+!docs/screenshots/
