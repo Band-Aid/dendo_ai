@@ -226,6 +226,7 @@
       "definitionPh": "厳密なビジネス定義 — 何を、どの期間、誰について数えるか。",
       "dslTemplate": "標準 DSL",
       "dslTemplatePh": "このコンセプトを測る aggDSL（任意）。エージェントは新規クエリの導出よりこちらを優先します。",
+      "dslRegenerated": "コンセプトを保存しました — 更新された測定対象に合わせて標準 DSL を再生成しました",
       "measures": "測定対象",
       "measuresPh": "このコンセプトの計算元となるフィーチャー / ページ / セグメントをリンク — 入力すると Pendo 全体も検索します",
       "remoteTag": "Pendo から追加",
