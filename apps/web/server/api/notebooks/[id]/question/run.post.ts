@@ -11,7 +11,10 @@ import type { ChatAggregation } from '~/server/utils/chatMessageStore'
 const schema = z.object({
   question: z.string().min(1).max(8000),
   /** Cells the question should treat as context — same semantics as chat. */
-  referencedCellIds: z.array(z.string()).optional().default([])
+  referencedCellIds: z.array(z.string()).optional().default([]),
+  /** Set when this question cell was created from a concept's cause/action/KPI
+   *  on the Product map — forces that concept's full context into the digest. */
+  originConceptId: z.string().optional()
 })
 
 /**
@@ -33,7 +36,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, message: err.message })
   }
 
-  const { question, referencedCellIds } = input
+  const { question, referencedCellIds, originConceptId } = input
 
   let notebook: Awaited<ReturnType<typeof getNotebook>>
   try {
@@ -70,7 +73,7 @@ export default defineEventHandler(async (event) => {
     agentSystemPrompt: agent.systemPrompt || undefined,
     agentInstructions: state.settings?.agentInstructions || undefined,
     customSkills: state.settings?.customSkills,
-    ontologyDigest: buildOntologyDigest(orgId) ?? undefined,
+    ontologyDigest: buildOntologyDigest(orgId, originConceptId) ?? undefined,
     defaultSegmentId: notebook.default_segment_id ?? null,
     defaultSegmentName: notebook.default_segment_name ?? null
   })

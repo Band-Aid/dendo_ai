@@ -183,6 +183,11 @@ export interface QuestionCellMeta {
    *  when the user has rephrased the question so we re-derive queries instead
    *  of replaying stale ones. */
   lastRunQuestion?: string
+  /** Set when this cell was created from a concept's cause/action/KPI on the
+   *  Product map. Threaded back to buildOntologyDigest on every run/re-run so
+   *  the agent gets that concept's full measures/DSL template inlined instead
+   *  of re-deriving tags/segments from the question text alone. */
+  originConceptId?: string
 }
 
 export interface QuestionCell {

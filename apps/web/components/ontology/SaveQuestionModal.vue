@@ -22,6 +22,9 @@ const props = defineProps<{
     aggregations: unknown[]
     summaryCharts: unknown[]
   } | null
+  /** Concept this question was asked from (a cause/action/KPI button), if any —
+   *  carried onto the saved cell so future runs keep using that concept's context. */
+  originConceptId?: string | null
 }>()
 const emit = defineEmits<{ close: []; saved: [notebookId: string] }>()
 
@@ -67,9 +70,10 @@ async function save() {
           // The ORIGINAL asked question — if the user edited the text in this
           // modal, content ≠ lastRunQuestion and the notebook's next run
           // correctly re-derives queries instead of replaying these.
-          lastRunQuestion: props.question
+          lastRunQuestion: props.question,
+          ...(props.originConceptId ? { originConceptId: props.originConceptId } : {})
         }
-      : {}
+      : (props.originConceptId ? { originConceptId: props.originConceptId } : {})
     await apiFetch(`/api/notebooks/${selectedNotebookId.value}/cells`, {
       method: 'POST',
       headers: { 'x-org-id': currentOrgId.value },

@@ -265,6 +265,7 @@ function onKeydown(e: KeyboardEvent) {
       :open="saveOpen"
       :question="answeredQuestion"
       :result="result ? { answer: result.answer, aggregations: result.aggregations, summaryCharts: result.summaryCharts } : null"
+      :origin-concept-id="originNodeId"
       @close="saveOpen = false"
     />
   </a-drawer>
