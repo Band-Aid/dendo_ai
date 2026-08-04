@@ -56,6 +56,88 @@ export function buildMeasuresKpiDsl(
   ].join('\n')
 }
 
+const TEMPLATE_ID_RE = /(?:featureId|pageId)\s*==\s*"([^"]+)"/g
+const TEMPLATE_APP_ID_RE = /appId=(\d+)/
+
+export interface TemplateSync {
+  /** True when the template is byte-identical to what `buildMeasuresKpiDsl`
+   *  produces for the ids it filters on — i.e. nobody hand-edited it. */
+  derived: boolean
+  /** Set when a derived template no longer matches `measures`: the rebuilt
+   *  template the caller should persist in its place. */
+  next?: string
+  /** Hand-written templates only — filtered ids the concept no longer
+   *  measures. Reported, never rewritten. */
+  staleIds: string[]
+  /** Hand-written templates only — measured entities of the kind the template
+   *  filters on that it never references. */
+  missingIds: string[]
+}
+
+/**
+ * Keep a concept's dslTemplate honest about its measures.
+ *
+ * The template embeds concrete pendoIds, so editing the measured entities
+ * leaves it pointing at the old ones — and every query path prefers the
+ * template (concept KPIs run it, the digest hands it to the agent), so the
+ * concept silently keeps reporting the entities it no longer claims to
+ * measure. No error is raised anywhere; the number is just wrong.
+ *
+ * Provenance is INFERRED rather than stored: a template is machine-derived iff
+ * rebuilding the canonical DSL from the ids it filters on reproduces it byte
+ * for byte. Derived templates are rebuilt from the current measures; anything
+ * hand-edited (even a one-word change to a generated template) is left alone
+ * and only reported as drift. Retroactive by construction — concepts saved
+ * before this existed classify correctly with no migration.
+ */
+export function syncKpiDslToMeasures(
+  template: string | undefined,
+  measures: string[],
+  nodes: OntologyEntityNode[],
+  appId?: number
+): TemplateSync {
+  const tpl = template?.trim()
+  if (!tpl) return { derived: false, staleIds: [], missingIds: [] }
+
+  const refs = [...tpl.matchAll(TEMPLATE_ID_RE)].map(m => m[1])
+  // A template with no id equality filter (a custom aggregate, a pasted JSON
+  // pipeline) says nothing about which entities it covers — no drift to claim.
+  if (refs.length === 0) return { derived: false, staleIds: [], missingIds: [] }
+
+  const nodeByPendoId = new Map(nodes.map(n => [n.pendoId, n]))
+  const refNodeIds = refs.map(p => nodeByPendoId.get(p)?.id).filter((id): id is string => Boolean(id))
+  const appIdMatch = tpl.match(TEMPLATE_APP_ID_RE)
+  // Rebuild with the template's OWN appId so a changed workspace appId reads as
+  // drift to repair, not as a hand edit.
+  const rebuilt = refs.length === refNodeIds.length
+    ? buildMeasuresKpiDsl(refNodeIds, nodes, appIdMatch ? Number(appIdMatch[1]) : undefined)
+    : null
+
+  if (rebuilt !== null && rebuilt === tpl) {
+    const next = buildMeasuresKpiDsl(measures, nodes, appId)
+    // A measure set with nothing queryable left (all segments, or emptied)
+    // keeps the old template rather than dropping to no KPI at all.
+    return { derived: true, staleIds: [], missingIds: [], ...(next && next !== tpl ? { next } : {}) }
+  }
+
+  const nodeById = new Map(nodes.map(n => [n.id, n]))
+  const measured = measures
+    .map(id => nodeById.get(id))
+    .filter((n): n is OntologyEntityNode => Boolean(n))
+  const measuredPendoIds = new Set(measured.map(n => n.pendoId))
+  // Only the kind the template actually filters on can be "missing" from it —
+  // a featureId template ignoring the concept's pages is the canonical shape,
+  // not drift.
+  const kind = tpl.includes('featureId ==') ? 'feature' : 'page'
+  return {
+    derived: false,
+    staleIds: [...new Set(refs.filter(p => !measuredPendoIds.has(p)))],
+    missingIds: measured
+      .filter(n => n.kind === kind && !refs.includes(n.pendoId))
+      .map(n => n.pendoId)
+  }
+}
+
 const TIME_COL_RE = /^(day|date|time|week|month|hour|period|ts|timestamp)$/i
 const ID_COL_RE = /id$/i
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}/

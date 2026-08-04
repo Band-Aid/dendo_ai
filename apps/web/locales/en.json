@@ -226,6 +226,7 @@
       "definitionPh": "The precise business definition — what counts, over what window, for whom.",
       "dslTemplate": "Canonical DSL",
       "dslTemplatePh": "Optional aggDSL that measures this concept. The agent prefers this over deriving a new query.",
+      "dslRegenerated": "Concept saved — the canonical DSL was rebuilt for the updated objects",
       "measures": "Measures",
       "measuresPh": "Link the features / pages / segments this concept is computed from — typing also searches all of Pendo",
       "remoteTag": "add from Pendo",

@@ -218,7 +218,7 @@ async function save() {
       }
     })
   try {
-    const res = await apiFetch<{ concept: OntologyConcept; dslWarning?: string }>(
+    const res = await apiFetch<{ concept: OntologyConcept; dslWarning?: string; dslRegenerated?: boolean }>(
       '/api/ontology/concepts',
       {
         method: 'POST',
@@ -237,11 +237,19 @@ async function save() {
         }
       }
     )
+    // The server rebuilds a machine-derived template when the measures change,
+    // so show what was actually stored rather than the stale text still in the
+    // box — the drawer stays open on a warning and would otherwise re-submit it.
+    if (res.concept.dslTemplate !== undefined || dslTemplate.value) {
+      dslTemplate.value = res.concept.dslTemplate ?? ''
+    }
     if (res.dslWarning) {
       // Saved anyway — surface the warning so the template gets fixed before
       // the agent starts preferring it.
       dslWarning.value = res.dslWarning
       message.warning(res.dslWarning)
+    } else if (res.dslRegenerated) {
+      message.success(t('ui.ontology.dslRegenerated'))
     } else {
       message.success(t('ui.ontology.conceptSaved'))
     }
