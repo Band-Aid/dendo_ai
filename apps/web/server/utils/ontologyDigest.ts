@@ -58,10 +58,10 @@ function conceptBlock(
  * action, or KPI button on the Product map, or a saved question cell created
  * that way). When it matches a concept, that concept's full record — every
  * measure/cause/action, uncapped — is inlined up front with a hard
- * instruction to use it, bypassing MAX_DIGEST_CHARS entirely. Without this,
- * a cause-derived question got the same generic, budget-capped digest as any
+ * instruction to use it. The origin concept block is not subject to
+ * MAX_DIGEST_CHARS (the generic concept list below is still budget-capped).
+ * Without this, a cause-derived question got the same generic, budget-capped digest as any
  * cold question and the agent had to re-search for tags/segments from prose
- * instead of using the concept's own linked measures.
  */
 export function buildOntologyDigest(orgId: string, originConceptId?: string): string | null {
   const blob = readOntology(orgId)
