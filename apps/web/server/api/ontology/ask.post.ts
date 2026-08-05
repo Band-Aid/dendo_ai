@@ -109,7 +109,7 @@ export default defineEventHandler(async (event) => {
     agentSystemPrompt: agent.systemPrompt || undefined,
     agentInstructions: state.settings?.agentInstructions || undefined,
     customSkills: state.settings?.customSkills,
-    ontologyDigest: noOntology ? undefined : (buildOntologyDigest(orgId) ?? undefined),
+    ontologyDigest: noOntology ? undefined : (buildOntologyDigest(orgId, input.originNodeId) ?? undefined),
     defaultSegmentId: null,
     defaultSegmentName: null
   })

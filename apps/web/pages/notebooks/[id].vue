@@ -298,7 +298,7 @@ async function handleRunQuestion(cellId: string) {
       }>(`/api/notebooks/${notebookId.value}/question/rerun`, {
         method: 'POST',
         headers: { 'x-org-id': currentOrgId.value },
-        body: { question, dsls: storedDsls }
+        body: { question, dsls: storedDsls, originConceptId: meta.originConceptId }
       })
       await updateCell(notebookId.value, cellId, {
         meta_json: {
@@ -328,10 +328,11 @@ async function handleRunQuestion(cellId: string) {
       }>(`/api/notebooks/${notebookId.value}/question/run`, {
         method: 'POST',
         headers: { 'x-org-id': currentOrgId.value },
-        body: { question }
+        body: { question, originConceptId: meta.originConceptId }
       })
       await updateCell(notebookId.value, cellId, {
         meta_json: {
+          ...meta,
           answer: res.answer,
           aggregations: res.aggregations ?? [],
           summaryCharts: res.summaryCharts ?? [],

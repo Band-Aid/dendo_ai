@@ -22,7 +22,10 @@ const schema = z.object({
   dsls: z.array(z.object({
     dsl: z.string().min(1),
     explanation: z.string().optional()
-  })).min(1)
+  })).min(1),
+  /** Set when this question cell was created from a concept's cause/action/KPI
+   *  on the Product map — forces that concept's full context into the digest. */
+  originConceptId: z.string().optional()
 })
 
 /** Cap rows fed back to the LLM so a large result can't blow the context. */
@@ -49,7 +52,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, message: err.message })
   }
 
-  const { question, dsls } = input
+  const { question, dsls, originConceptId } = input
 
   let notebook: Awaited<ReturnType<typeof getNotebook>>
   try {
@@ -77,7 +80,7 @@ export default defineEventHandler(async (event) => {
     agentSystemPrompt: agent.systemPrompt || undefined,
     agentInstructions: state.settings?.agentInstructions || undefined,
     customSkills: state.settings?.customSkills,
-    ontologyDigest: buildOntologyDigest(orgId) ?? undefined,
+    ontologyDigest: buildOntologyDigest(orgId, originConceptId) ?? undefined,
     defaultSegmentId: notebook.default_segment_id ?? null,
     defaultSegmentName: notebook.default_segment_name ?? null
   })
