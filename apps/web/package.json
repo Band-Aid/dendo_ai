@@ -9,12 +9,14 @@
   },
   "dependencies": {
     "@ant-design/icons-vue": "^7.0.1",
+    "@opentelemetry/api": "^1.9.1",
     "@vueuse/core": "^14.3.0",
     "ant-design-vue": "^4.2.6",
     "echarts": "^6.1.0",
     "execa": "8.0.1",
     "marked": "^17.0.2",
     "nuxt": "3.8.2",
+    "pendo-server-sdk": "^0.10.2",
     "zod": "3.24.2"
   },
   "devDependencies": {

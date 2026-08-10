@@ -1,5 +1,6 @@
 import { callLlm, appendToolResults, type ConversationMessage, type LlmResponse } from '~/server/utils/llmClient'
 import { executeTool } from '~/server/utils/toolRegistry'
+import { traceToolCall } from '~/server/utils/pendoTracing'
 import type { ProviderConfig } from '~/server/utils/adminStore'
 import type { UnifiedTool } from '~/server/utils/llmClient'
 import type { McpServerConfig } from '~/types/mcp'
@@ -121,9 +122,16 @@ export async function runAgentLoop(config: AgentLoopConfig): Promise<AgentLoopRe
       } else {
         if (toolCall.name === 'run_pendo_aggregation') aggCallCount++
 
-        const { result, error } = await executeTool(
-          toolCall.name, toolCall.args, orgId, sessionId, mcpConfigs,
-          { defaultSegmentId: defaultSegmentId ?? null }
+        // Recorded as a TOOL_REQUEST span on the active Pendo turn. `executeTool`
+        // reports failure by returning `error` rather than throwing, so the
+        // outcome mapper is what marks the span errored.
+        const { result, error } = await traceToolCall(
+          { name: toolCall.name, input: toolCall.args },
+          () => executeTool(
+            toolCall.name, toolCall.args, orgId, sessionId, mcpConfigs,
+            { defaultSegmentId: defaultSegmentId ?? null }
+          ),
+          (res) => ({ output: res.error ? undefined : res.result, error: res.error })
         )
 
         if (error) {

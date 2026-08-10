@@ -273,6 +273,80 @@ A Nuxt 3 web app (`apps/web`) over a Python aggregation toolchain (`src/`, `tool
 **Admin**
 - `/api/admin/providers` (+ `/test`) · `/api/admin/agents` · `/api/admin/pendo` · `/api/admin/mcp` · `/api/admin/settings`
 
+**Agent Analytics**
+- `/api/pendo/reaction` — record a thumbs-up/down against an agent answer (see below)
+
+### Pendo Agent Analytics
+
+Every agent turn is reported to [Pendo Agent Analytics](https://app.pendo.io) via `pendo-server-sdk`: the user's prompt, the agent's answer, and the trace behind it (each LLM generation and each tool call, with token counts and error status). Instrumentation lives in `server/utils/pendoTracing.ts`.
+
+**The DSL toolchain is traced too.** `aggdsl` is reported as its own `aggdsl_compile` tool call, nested inside the agent tool that invoked it, so a trace shows the compile step rather than just its end result:
+
+```
+conversation.turn
+├─ user.prompt                     "which features did enterprise accounts adopt?"
+├─ llm.generation                  claude-sonnet-4 · 1200 in / 80 out
+├─ tool.run_pendo_aggregation
+│  └─ tool.aggdsl_compile          in:  the DSL the agent wrote
+│                                  out: the compiled Pendo aggregation body
+└─ agent.response                  answer · tools used · token rollup
+```
+
+`tool.input` carries the DSL as the agent wrote it, plus the `effectiveDsl` that `aggdsl` actually received when normalization or default-segment injection changed it. `tool.output` carries the compiled Pendo body, or the compiler's error text when a compile fails — which is what makes a bad generated query legible in the trace. Compiles served from `dslCache` never reach the subprocess and are stamped `aggdsl.from_cache` so the trace doesn't imply a run that didn't happen.
+
+Turns are reported from the four surfaces that actually run the agent:
+
+| Surface | Conversation id | Notes |
+| --- | --- | --- |
+| Notebook chat (`/agent/stream`) | `nbchat:<uuid>`, stored with the messages | The one multi-turn thread — see below |
+| Question cell run (`/question/run`) | `qcell:<sessionId>` | Deliberately stateless: one conversation per run |
+| Question cell re-run (`/question/rerun`) | `qrerun:<notebookId>:…` | Prompt is the *original* question; DSL repair shows up as nested trace spans |
+| Product map ask (`/ontology/ask`) | `ask:<sessionId>` | One-shot ask, one conversation |
+
+**The notebook chat's conversation id lives in the database, beside the messages** (`chat_conversation:<notebookId>` in `kv_store`), not in the browser. The client's `sessionId` is regenerated on every page load, so keying off it would split one continuous chat into a new conversation each time the user reloaded or navigated back. Instead the id is minted on the first turn and stays fixed for the life of the visible thread — across reloads, and across browsers looking at the same notebook.
+
+Clearing the chat retires it: `clearChatMessages()` rotates the id in the same call that deletes the messages, so the analytics conversation always ends exactly when the thread the user can see does. Each notebook keeps its own id; clearing one never touches another.
+
+Background LLM work that isn't part of a conversation (concept evolution, concept suggestions, entity mapping) is deliberately **not** reported — it would otherwise attach stray generations to whichever conversation ran last.
+
+Configuration is in `nuxt.config.ts` under `runtimeConfig.pendoAgent`, with working defaults.
+
+| Setting | Default | Dev / build-time var | **Production runtime var** |
+| --- | --- | --- | --- |
+| Public App ID | *(pre-filled)* | `PENDO_AGENT_API_KEY` | `NUXT_PENDO_AGENT_API_KEY` |
+| Agent ID | *(pre-filled)* | `PENDO_AGENT_ID` | `NUXT_PENDO_AGENT_AGENT_ID` |
+| Ingestion host | `https://app.pendo.io` | `PENDO_AGENT_ENDPOINT` | `NUXT_PENDO_AGENT_ENDPOINT` |
+| Tracing on/off | `true` | `PENDO_AGENT_TRACING=false` | `NUXT_PENDO_AGENT_ENABLED=false` |
+| PII redaction | `false` | `PENDO_AGENT_REDACT=true` | `NUXT_PENDO_AGENT_REDACT=true` |
+| Visitor override | *(empty)* | `PENDO_AGENT_VISITOR_ID` | `NUXT_PENDO_AGENT_DEFAULT_VISITOR_ID` |
+| Account override | *(empty)* | `PENDO_AGENT_ACCOUNT_ID` | `NUXT_PENDO_AGENT_DEFAULT_ACCOUNT_ID` |
+
+The Public App ID is the same public value a browser Pendo snippet carries, not a secret token — which is why it ships as a default. The Agent ID comes from Product → Agent Analytics → settings.
+
+> **Two columns, because they apply at different times.** The plain `PENDO_AGENT_*` names are read by `nuxt.config.ts`, so they are baked in when `nuxt build` runs — perfect for `.env` in dev, but setting them on a built server does nothing. In production use the `NUXT_`-prefixed names, which Nuxt maps onto `runtimeConfig` at startup. Both forms are verified working.
+
+**Identity.** Dendo has no end-user login, so the visitor is workspace-derived rather than per-person: the workspace's slug suffixed with `_user_turn` — workspace *Acme Corp* reports as `acme-corp_user_turn`, the default workspace as `default_user_turn`. (Workspace is the user-facing name for an Organization, the entity behind `orgId` and the `X-Org-Id` header. The slug is used rather than the display name because it's already URL-safe.)
+
+Full precedence — visitor: `x-pendo-visitor-id` header → `PENDO_AGENT_VISITOR_ID` → `<workspace-slug>_user_turn`. Account: `x-pendo-account-id` header → `PENDO_AGENT_ACCOUNT_ID` → the resolved org id. Once real users exist, send the header from whatever shell embeds Dendo — no server change needed.
+
+**User interactions.** Prompts, answers, and traces are emitted automatically; anything the user *does* with an answer has to be sent explicitly. The chat sidebar's action buttons are wired to `POST /api/notebooks/[id]/chat/interaction`, which reports the click as a Pendo `user_reaction` against that answer:
+
+| Button | Action reported |
+| --- | --- |
+| Add text to note | `add_note` |
+| Add DSL as query | `add_query` |
+| Save as question | `save_question` |
+| Add table / chart / both | `add_aggregation` (mode in the comment field) |
+| Add this chart to the notebook | `add_chart` |
+
+Together these say which answers were good enough to keep — a signal that is otherwise invisible.
+
+Pairing works because the agent stream mints the assistant message's id *before* the turn and uses it in three places: the chat row, the message the UI renders, and Pendo's `agent_response`. One id everywhere means a click attributes to the exact answer. The conversation id is resolved server-side from the notebook, so the browser never handles analytics identifiers. Calls are fire-and-forget — a failed analytics write never blocks or fails the user's click.
+
+> These use action-specific reaction types rather than Pendo's documented `thumbs_up` / `thumbs_down` / `unreact`. They transmit and store correctly (verified end to end), but Pendo's Agent Analytics UI may only give first-class treatment to the standard set — check how they surface before relying on them for reporting.
+
+**Thumbs up/down** is not wired: there's no feedback control in the chat UI. `POST /api/pendo/reaction` is ready for one whenever it's built.
+
 ### The aggregation DSL
 
 `aggdsl` (in `src/aggdsl`) is a small DSL that compiles to Pendo Aggregation API JSON bodies, exposed as a CLI (`aggdsl compile`) and used by the web runtime. Execution helpers live in `tools/pendo` (`run_agg`, `lookup_names`, `lookup_segments`, …). Make sure Python deps are installed, `aggdsl` is on PATH, and `tools.pendo` is importable.
@@ -295,6 +369,9 @@ A Nuxt 3 web app (`apps/web`) over a Python aggregation toolchain (`src/`, `tool
 | A query cell keeps making new tables | Result cells created before query→result pairing existed have no owner. The next run adopts the orphan directly beneath the query when its DSL matches; otherwise delete the stray table and re-run. |
 | Response is cut off | Admin → Settings → bump Max Tokens, or ask the agent to continue. |
 | Agent ignores a rule you mentioned once | Move it into Setup → workspace instructions (re-read every turn). |
+| Nothing in Pendo Agent Analytics | Conversations batch hourly — allow ~15 min after the next batch starts. Then check tracing isn't disabled, that the Agent ID matches the one in Pendo, and that outbound traffic to `app.pendo.io/data/agenticsdk/*` is allowed. |
+| Env var changes have no effect in production | Plain `PENDO_AGENT_*` vars are build-time only. On a built server use the `NUXT_`-prefixed names (see the config table above). |
+| Traces appear but token counts are empty | Anthropic reports usage inline on the stream; OpenAI-protocol deployments only do when they opt into usage-on-stream. Everything else still reports. |
 
 ---
 

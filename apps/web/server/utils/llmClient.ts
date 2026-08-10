@@ -1,4 +1,5 @@
 import type { ProviderConfig } from '~/server/utils/adminStore'
+import { traceGeneration } from '~/server/utils/pendoTracing'
 
 export interface UnifiedTool {
   name: string
@@ -12,10 +13,22 @@ export interface ToolCall {
   args: Record<string, unknown>
 }
 
+/**
+ * Token accounting for one call, when the provider reports it. Anthropic sends
+ * this inline on the SSE stream; OpenAI only does when the deployment opts into
+ * usage on streamed responses, so treat every field as best-effort.
+ */
+export interface LlmUsage {
+  inputTokens?: number
+  outputTokens?: number
+  cacheReadTokens?: number
+}
+
 export interface LlmResponse {
   textContent: string
   toolCalls: ToolCall[]
   stopReason: string
+  usage?: LlmUsage
 }
 
 export interface LlmCallOptions {
@@ -88,7 +101,51 @@ function openAiMessagesToApi(messages: ConversationMessage[]): any[] {
   return result
 }
 
+/**
+ * The model that actually serves the request. For Azure the *deployment* is the
+ * real model (see the note in `dispatchLlm`), so report that to telemetry rather
+ * than the cosmetic dropdown value.
+ */
+function effectiveModel(opts: LlmCallOptions): string {
+  if (opts.provider.provider === 'azure_openai') {
+    return opts.provider.deployment?.trim() || opts.model
+  }
+  return opts.model
+}
+
+/** Compact stand-in for "what the model was asked" on the generation span. */
+function describeRequest(opts: LlmCallOptions): string {
+  const last = opts.messages[opts.messages.length - 1]
+  if (!last) return ''
+  if (typeof last.content === 'string') return last.content
+  try {
+    return JSON.stringify(last.content)
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * Call the configured provider, recording the round-trip as a Pendo GENERATION
+ * span when a conversation turn is active (see `pendoTracing.ts`).
+ */
 export async function callLlm(opts: LlmCallOptions): Promise<LlmResponse> {
+  const model = effectiveModel(opts)
+  return traceGeneration(
+    { model, promptText: describeRequest(opts), toolsAvailable: opts.tools },
+    () => dispatchLlm(opts),
+    (res) => ({
+      text: res.textContent,
+      model,
+      inputTokens: res.usage?.inputTokens,
+      outputTokens: res.usage?.outputTokens,
+      cacheReadTokens: res.usage?.cacheReadTokens,
+      toolCalls: res.toolCalls.map(t => t.name)
+    })
+  )
+}
+
+async function dispatchLlm(opts: LlmCallOptions): Promise<LlmResponse> {
   const { provider } = opts
 
   if (provider.provider === 'anthropic') {
@@ -237,6 +294,7 @@ async function callAnthropic(opts: LlmCallOptions, transport: AnthropicTransport
   let textContent = ''
   const toolCalls: ToolCall[] = []
   let stopReason = 'end_turn'
+  const usage: LlmUsage = {}
   const pendingToolCalls: Map<number, { id: string; name: string; inputBuf: string }> = new Map()
 
   const reader = response.body!.getReader()
@@ -256,8 +314,18 @@ async function callAnthropic(opts: LlmCallOptions, transport: AnthropicTransport
       if (!data || data === '[DONE]') continue
       try {
         const ev = JSON.parse(data)
-        if (ev.type === 'message_delta') {
+        if (ev.type === 'message_start') {
+          // Prompt-side accounting arrives once, up front.
+          const u = ev.message?.usage
+          if (u) {
+            if (u.input_tokens != null) usage.inputTokens = u.input_tokens
+            if (u.cache_read_input_tokens != null) usage.cacheReadTokens = u.cache_read_input_tokens
+            if (u.output_tokens != null) usage.outputTokens = u.output_tokens
+          }
+        } else if (ev.type === 'message_delta') {
           stopReason = ev.delta?.stop_reason ?? stopReason
+          // Completion tokens are only final on the closing delta.
+          if (ev.usage?.output_tokens != null) usage.outputTokens = ev.usage.output_tokens
         } else if (ev.type === 'content_block_start') {
           const blk = ev.content_block
           if (blk?.type === 'tool_use') {
@@ -285,7 +353,7 @@ async function callAnthropic(opts: LlmCallOptions, transport: AnthropicTransport
     }
   }
 
-  return { textContent, toolCalls, stopReason }
+  return { textContent, toolCalls, stopReason, usage }
 }
 
 async function callOpenAi(opts: LlmCallOptions, url: string, apiKey: string, isAzure = false): Promise<LlmResponse> {
@@ -323,6 +391,7 @@ async function callOpenAi(opts: LlmCallOptions, url: string, apiKey: string, isA
   let textContent = ''
   const pendingCalls: Map<number, { id: string; name: string; argsBuf: string }> = new Map()
   let stopReason = 'stop'
+  const usage: LlmUsage = {}
 
   const reader = response.body!.getReader()
   const decoder = new TextDecoder()
@@ -341,6 +410,16 @@ async function callOpenAi(opts: LlmCallOptions, url: string, apiKey: string, isA
       if (!data || data === '[DONE]') continue
       try {
         const ev = JSON.parse(data)
+        // Usage rides on its own trailing chunk with an empty `choices` array,
+        // so read it before the guard below skips that chunk. Only deployments
+        // that opt into usage-on-stream send it; absence is normal.
+        if (ev.usage) {
+          if (ev.usage.prompt_tokens != null) usage.inputTokens = ev.usage.prompt_tokens
+          if (ev.usage.completion_tokens != null) usage.outputTokens = ev.usage.completion_tokens
+          if (ev.usage.prompt_tokens_details?.cached_tokens != null) {
+            usage.cacheReadTokens = ev.usage.prompt_tokens_details.cached_tokens
+          }
+        }
         const choice = ev.choices?.[0]
         if (!choice) continue
         stopReason = choice.finish_reason ?? stopReason
@@ -374,7 +453,7 @@ async function callOpenAi(opts: LlmCallOptions, url: string, apiKey: string, isA
     }
   }
 
-  return { textContent, toolCalls, stopReason }
+  return { textContent, toolCalls, stopReason, usage }
 }
 
 // Build the messages array after a tool result turn

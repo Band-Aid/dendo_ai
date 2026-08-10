@@ -19,9 +19,32 @@ import AgentInputBar from './AgentInputBar.vue'
 import ChartRenderer from './ChartRenderer.vue'
 import { inferChartConfig } from '~/composables/useChartInference'
 import { useI18n } from '~/composables/useI18n'
+import { useApi } from '~/composables/useApi'
 import type { ChatMessage, ChatAggregation, ChatSummaryChart, NotebookCell } from '~/types/notebook'
 
 const { t } = useI18n()
+const { apiFetch } = useApi()
+
+/**
+ * Report that the user acted on an agent answer (added it to the notebook,
+ * saved it as a question, …) to Pendo Agent Analytics.
+ *
+ * Fire-and-forget on purpose: this runs alongside the real action, so a slow or
+ * failing analytics call must never delay the click or surface an error to the
+ * user. The message id is the same one the server reported the answer under, so
+ * the interaction attaches to that exact answer.
+ */
+function trackAnswerAction(
+  msg: ChatMessage,
+  action: 'add_note' | 'add_query' | 'save_question' | 'add_aggregation' | 'add_chart',
+  detail?: string
+) {
+  if (!msg?.id || !msg.notebook_id) return
+  apiFetch(`/api/notebooks/${msg.notebook_id}/chat/interaction`, {
+    method: 'POST',
+    body: { messageId: msg.id, action, ...(detail ? { detail } : {}) }
+  }).catch(() => { /* analytics is never worth interrupting the user for */ })
+}
 
 /**
  * Convert an agent-built summary chart spec into the shape `ChartRenderer`
@@ -218,19 +241,19 @@ function refLabel(cellId: string): string {
             <a-button
               size="small"
               :icon="h(PlusOutlined)"
-              @click="emit('addNote', msg.content, questionFor(msg))"
+              @click="emit('addNote', msg.content, questionFor(msg)); trackAnswerAction(msg, 'add_note')"
             >{{ t('ui.chat.actions.addNote') }}</a-button>
             <a-button
               v-if="msg.dsl"
               size="small"
               :icon="h(CodeOutlined)"
-              @click="emit('addQuery', msg.dsl!)"
+              @click="emit('addQuery', msg.dsl!); trackAnswerAction(msg, 'add_query')"
             >{{ t('ui.chat.actions.addQuery') }}</a-button>
             <a-button
               v-if="questionFor(msg)"
               size="small"
               :icon="h(QuestionCircleOutlined)"
-              @click="emit('addQuestion', questionFor(msg)!, msg)"
+              @click="emit('addQuestion', questionFor(msg)!, msg); trackAnswerAction(msg, 'save_question')"
             >{{ t('ui.chat.actions.saveQuestion') }}</a-button>
           </div>
 
@@ -270,20 +293,20 @@ function refLabel(cellId: string): string {
                 <a-button
                   size="small"
                   :icon="h(TableOutlined)"
-                  @click="emit('addAggregation', agg, 'table')"
+                  @click="emit('addAggregation', agg, 'table'); trackAnswerAction(msg, 'add_aggregation', 'table')"
                 >{{ t('ui.chat.actions.addTable') }}</a-button>
                 <a-button
                   v-if="aggChartable(agg)"
                   size="small"
                   :icon="h(BarChartOutlined)"
-                  @click="emit('addAggregation', agg, 'chart')"
+                  @click="emit('addAggregation', agg, 'chart'); trackAnswerAction(msg, 'add_aggregation', 'chart')"
                 >{{ t('ui.chat.actions.addChart') }}</a-button>
                 <a-button
                   v-if="aggChartable(agg)"
                   size="small"
                   type="primary"
                   :icon="h(AppstoreOutlined)"
-                  @click="emit('addAggregation', agg, 'both')"
+                  @click="emit('addAggregation', agg, 'both'); trackAnswerAction(msg, 'add_aggregation', 'both')"
                 >{{ t('ui.chat.actions.addBoth') }}</a-button>
               </div>
             </div>
@@ -320,7 +343,7 @@ function refLabel(cellId: string): string {
                   size="small"
                   type="primary"
                   :icon="h(AppstoreOutlined)"
-                  @click="emit('addAgentSummaryChart', chart)"
+                  @click="emit('addAgentSummaryChart', chart); trackAnswerAction(msg, 'add_chart')"
                 >
                   {{ t('ui.chat.actions.addAgentSummary') }}
                 </a-button>
