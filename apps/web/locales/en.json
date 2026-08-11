@@ -431,6 +431,9 @@
     "chat": {
       "title": "Chat",
       "clearTooltip": "Clear chat history",
+      "clearConfirm": "Clear this chat history? This can't be undone.",
+      "clearConfirmOk": "Clear chat",
+      "clearConfirmCancel": "Cancel",
       "collapse": "Collapse chat",
       "enterFullscreen": "Expand chat to fullscreen",
       "exitFullscreen": "Exit fullscreen",
