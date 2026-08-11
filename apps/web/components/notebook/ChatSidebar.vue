@@ -179,7 +179,22 @@ function refLabel(cellId: string): string {
 
     <template v-else>
     <div class="sidebar-header">
-      <a-tooltip :title="t('ui.chat.collapse')">
+      <!--
+        Every header tooltip is edge-anchored rather than left on Ant's default
+        `top` placement.
+
+        These buttons sit at the right edge of the window, and the popup is
+        portalled to <body>, which has no overflow constraint. A tooltip wider
+        than the gap to the window edge — "Expand chat to fullscreen" easily is —
+        pushed past the viewport, the document grew a scrollbar, and the reflow
+        shifted the button out from under the cursor mid-hover.
+
+        Anchoring to the button's own edge makes the popup grow inward over the
+        notebook instead of outward past the window, so its width can no longer
+        affect layout. Opening downward also stops it covering the app chrome
+        above the header.
+      -->
+      <a-tooltip :title="t('ui.chat.collapse')" placement="bottomLeft">
         <a-button
           class="header-icon-btn"
           size="small"
@@ -190,7 +205,10 @@ function refLabel(cellId: string): string {
       </a-tooltip>
       <span class="sidebar-title">{{ t('ui.chat.title') }}</span>
       <div class="sidebar-header-actions">
-        <a-tooltip :title="fullscreen ? t('ui.chat.exitFullscreen') : t('ui.chat.enterFullscreen')">
+        <a-tooltip
+          :title="fullscreen ? t('ui.chat.exitFullscreen') : t('ui.chat.enterFullscreen')"
+          placement="bottomRight"
+        >
           <a-button
             class="header-icon-btn"
             size="small"
@@ -211,7 +229,7 @@ function refLabel(cellId: string): string {
           placement="bottomRight"
           @confirm="emit('clearChat')"
         >
-          <a-tooltip :title="t('ui.chat.clearTooltip')">
+          <a-tooltip :title="t('ui.chat.clearTooltip')" placement="bottomRight">
             <a-button
               class="header-icon-btn"
               size="small"
