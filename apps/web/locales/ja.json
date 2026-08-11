@@ -431,6 +431,9 @@
     "chat": {
       "title": "チャット",
       "clearTooltip": "履歴をクリア",
+      "clearConfirm": "このチャット履歴を消去しますか？この操作は取り消せません。",
+      "clearConfirmOk": "履歴を消去",
+      "clearConfirmCancel": "キャンセル",
       "collapse": "チャットを折りたたむ",
       "enterFullscreen": "チャットを全画面表示",
       "exitFullscreen": "全画面を終了",

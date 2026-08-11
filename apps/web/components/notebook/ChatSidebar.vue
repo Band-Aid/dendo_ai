@@ -181,6 +181,7 @@ function refLabel(cellId: string): string {
     <div class="sidebar-header">
       <a-tooltip :title="t('ui.chat.collapse')">
         <a-button
+          class="header-icon-btn"
           size="small"
           type="text"
           :icon="h(DoubleRightOutlined)"
@@ -191,21 +192,35 @@ function refLabel(cellId: string): string {
       <div class="sidebar-header-actions">
         <a-tooltip :title="fullscreen ? t('ui.chat.exitFullscreen') : t('ui.chat.enterFullscreen')">
           <a-button
+            class="header-icon-btn"
             size="small"
             type="text"
             :icon="h(fullscreen ? FullscreenExitOutlined : FullscreenOutlined)"
             @click="emit('toggleFullscreen')"
           />
         </a-tooltip>
-        <a-tooltip :title="t('ui.chat.clearTooltip')">
-          <a-button
-            v-if="messages.length"
-            size="small"
-            type="text"
-            :icon="h(CloseCircleOutlined)"
-            @click="emit('clearChat')"
-          />
-        </a-tooltip>
+        <!-- Clearing the chat is destructive and irreversible, so it is kept
+             physically apart from the layout toggles rather than sitting flush
+             against them. -->
+        <span v-if="messages.length" class="header-action-divider" aria-hidden="true" />
+        <a-popconfirm
+          v-if="messages.length"
+          :title="t('ui.chat.clearConfirm')"
+          :ok-text="t('ui.chat.clearConfirmOk')"
+          :cancel-text="t('ui.chat.clearConfirmCancel')"
+          placement="bottomRight"
+          @confirm="emit('clearChat')"
+        >
+          <a-tooltip :title="t('ui.chat.clearTooltip')">
+            <a-button
+              class="header-icon-btn"
+              size="small"
+              type="text"
+              danger
+              :icon="h(CloseCircleOutlined)"
+            />
+          </a-tooltip>
+        </a-popconfirm>
       </div>
     </div>
 
@@ -480,10 +495,42 @@ function refLabel(cellId: string): string {
   flex-shrink: 0;
   gap: 8px;
 }
+/*
+ * Header controls.
+ *
+ * These are icon-only text buttons: transparent until hovered, so their real
+ * clickable box — which is larger than the glyph inside it — is invisible until
+ * you are already on it. At the old 2px spacing the next button's hit area
+ * began almost immediately after the previous glyph, so aiming just off
+ * "fullscreen" landed on "clear chat" instead, and the hover background
+ * appearing made the control look like it had grown under the cursor.
+ *
+ * The fix is to make the target explicit and predictable: a fixed 28px box per
+ * button, real space between them, and a rule separating the destructive action
+ * from the layout toggles.
+ */
 .sidebar-header-actions {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 6px;
+}
+.sidebar-header :deep(.header-icon-btn) {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* Only the background transitions — never the geometry, so a hovered button
+     can never move or resize the ones beside it. */
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.header-action-divider {
+  width: 1px;
+  height: 16px;
+  background: var(--rule);
+  flex-shrink: 0;
 }
 .sidebar-title {
   font-family: var(--serif);
