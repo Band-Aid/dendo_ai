@@ -50,6 +50,8 @@ const hasResult = computed(() =>
 // --- Question editing -------------------------------------------------------
 const editing = ref(false)
 const draft = ref(props.cell.content)
+/** True while an IME conversion is open (Japanese/Chinese/Korean input). */
+const composing = ref(false)
 // If the cell arrives empty (just added), drop straight into edit mode so the
 // user can type the question without an extra click.
 if (!props.cell.content.trim()) editing.value = true
@@ -74,6 +76,10 @@ function saveEdit() {
 // Cmd/Ctrl+Enter saves and runs in one step.
 function onEditorKeydown(e: KeyboardEvent) {
   if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+    // An open IME conversion owns this keystroke — `draft` is still the
+    // pre-conversion value until `compositionend`, so acting now would save
+    // the wrong text. See the same guard in AgentInputBar.
+    if (composing.value || e.isComposing || e.keyCode === 229) return
     e.preventDefault()
     const next = draft.value.trim()
     if (!next) return
@@ -204,6 +210,8 @@ const runTooltip = computed(() =>
             spellcheck="false"
             autofocus
             @keydown="onEditorKeydown"
+            @compositionstart="composing = true"
+            @compositionend="composing = false"
           />
           <div class="q-editor-actions">
             <a-button size="small" type="primary" :icon="h(CheckOutlined)" @click="saveEdit">

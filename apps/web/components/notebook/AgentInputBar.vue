@@ -18,6 +18,9 @@ const emit = defineEmits<{
 
 const question = ref('')
 
+/** True while an IME conversion is open (Japanese/Chinese/Korean input). */
+const composing = ref(false)
+
 function handleSend() {
   const q = question.value.trim()
   if (!q || props.streaming) return
@@ -26,10 +29,24 @@ function handleSend() {
 }
 
 function handleKeydown(e: KeyboardEvent) {
-  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-    e.preventDefault()
-    handleSend()
-  }
+  if (!((e.ctrlKey || e.metaKey) && e.key === 'Enter')) return
+
+  // While an IME conversion is open this keystroke belongs to the IME, not to
+  // us. Sending anyway left text behind in the box: `v-model` defers its
+  // updates until `compositionend`, so `question` still held the *previous*
+  // value at this point — we would send that (or nothing), clear the ref, and
+  // then `compositionend` would write the just-converted text straight back
+  // into the empty input. Letting the IME keep the keystroke means the user
+  // confirms their conversion first, and the following Ctrl+Enter sends and
+  // clears exactly what they see.
+  //
+  // `composing` is the reliable signal; `isComposing` and the legacy 229
+  // keycode are checked too because IME behaviour varies by browser and
+  // platform. Same guard as `onTitleEnter` in the notebook page.
+  if (composing.value || e.isComposing || e.keyCode === 229) return
+
+  e.preventDefault()
+  handleSend()
 }
 </script>
 
@@ -47,6 +64,8 @@ function handleKeydown(e: KeyboardEvent) {
         :disabled="streaming"
         class="question-input"
         @keydown="handleKeydown"
+        @compositionstart="composing = true"
+        @compositionend="composing = false"
       />
       <a-button
         v-if="!streaming"

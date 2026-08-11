@@ -43,6 +43,8 @@ interface EvolvedUpdate {
 }
 
 const question = ref('')
+/** True while an IME conversion is open (Japanese/Chinese/Korean input). */
+const composing = ref(false)
 const running = ref(false)
 const result = ref<AskResult | null>(null)
 const errorMsg = ref('')
@@ -167,6 +169,9 @@ function renderMarkdown(content: string): string {
 
 function onKeydown(e: KeyboardEvent) {
   if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+    // An open IME conversion owns this keystroke — `question` is still the
+    // pre-conversion value until `compositionend`. See AgentInputBar.
+    if (composing.value || e.isComposing || e.keyCode === 229) return
     e.preventDefault()
     run()
   }
@@ -191,6 +196,8 @@ function onKeydown(e: KeyboardEvent) {
         :auto-size="{ minRows: 2, maxRows: 6 }"
         :placeholder="t('ui.ontology.askPlaceholder')"
         @keydown="onKeydown"
+        @compositionstart="composing = true"
+        @compositionend="composing = false"
       />
       <div class="ask-run-row">
         <span class="ask-hint">{{ t('ui.ontology.askHint') }}</span>
