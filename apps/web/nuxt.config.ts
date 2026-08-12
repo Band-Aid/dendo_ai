@@ -53,11 +53,20 @@ export default defineNuxtConfig({
     azureOpenAiEndpoint: process.env.AZURE_OPENAI_ENDPOINT || '',
     azureOpenAiApiVersion: process.env.AZURE_OPENAI_API_VERSION || '2024-10-21',
     /**
-     * Pendo Agent Analytics. `apiKey` is the Pendo *Public App ID* (the same
-     * public value a browser Pendo snippet carries), not a secret API token —
-     * the defaults below keep tracing working out of the box. Override per
-     * environment with PENDO_AGENT_* env vars, or set PENDO_AGENT_TRACING=false
-     * to turn instrumentation off entirely.
+     * Pendo Agent Analytics — where this app reports its OWN agent
+     * conversations (prompts, answers, generations, tool calls).
+     *
+     * Deliberately EMPTY by default, and it must stay that way. A shipped app id
+     * and agent id would make every clone of this repo export its users'
+     * conversations into whichever subscription those literals belong to,
+     * without anyone opting in. With both blank the app treats tracing as off
+     * and every helper degrades to a pass-through.
+     *
+     * Configure it per workspace in `Admin → Pendo Integration → Agent
+     * Analytics`, or set PENDO_AGENT_* for a whole deployment. `apiKey` is a
+     * Pendo *Public App ID* (the value a browser Pendo snippet carries), not a
+     * secret API token — but it still names a real subscription, so it belongs
+     * in configuration rather than in source.
      */
     pendoAgent: {
       apiKey: process.env.PENDO_AGENT_API_KEY || '',

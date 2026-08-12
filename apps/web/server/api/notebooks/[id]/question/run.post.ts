@@ -93,6 +93,7 @@ export default defineEventHandler(async (event) => {
   try {
     const result = await withAgentTurn(
       {
+        orgId,
         conversationId: `qcell:${sessionId}`,
         prompt: question,
         visitorId: identity.visitorId,

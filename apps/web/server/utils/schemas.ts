@@ -38,6 +38,23 @@ export const pendoSettingsSchema = z.object({
 })
 
 /**
+ * Pendo Agent Analytics destination. Empty strings are meaningful here — they
+ * are how the form clears a field — so blanks are preserved rather than treated
+ * as "unset", unlike the integration key above.
+ */
+export const pendoAgentSettingsSchema = z.object({
+  enabled: z.boolean().default(false),
+  apiKey: z.string().max(200).default(''),
+  agentId: z.string().max(200).default(''),
+  endpoint: z.union([z.string().url(), z.literal('')]).default(''),
+  redact: z.boolean().default(false),
+  defaultVisitorId: z.string().max(200).default(''),
+  defaultAccountId: z.string().max(200).default('')
+}).refine(v => !v.enabled || (v.apiKey.trim() && v.agentId.trim()), {
+  message: 'Public App ID and Agent ID are both required to enable tracing'
+})
+
+/**
  * A user-defined skill. The agent loads enabled skills into its system prompt
  * (uncached layer) and follows the matching one when the user's request hits
  * its trigger phrases. Skills are workspace-scoped — different teams can keep

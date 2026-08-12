@@ -37,6 +37,7 @@ import { createRequire } from 'node:module'
 import type { Context, Span } from '@opentelemetry/api'
 import type { ReactionTypeValue } from 'pendo-server-sdk'
 import { getOrgById } from '~/server/utils/orgStore'
+import { readAdminState } from '~/server/utils/adminStore'
 
 /**
  * Both of these are loaded through `createRequire` rather than `import`, the
@@ -59,6 +60,7 @@ const { trace, context: otelContext, SpanStatusCode } =
   nodeRequire('@opentelemetry/api') as typeof import('@opentelemetry/api')
 const {
   init: pendoInit,
+  shutdown: pendoShutdown,
   flush: pendoFlush,
   recordReaction
 } = nodeRequire('pendo-server-sdk') as typeof import('pendo-server-sdk')
@@ -103,7 +105,11 @@ interface PendoAgentConfig {
   defaultAccountId: string
 }
 
-function readConfig(): PendoAgentConfig {
+/**
+ * Deployment-level config from `nuxt.config.ts` / `PENDO_AGENT_*` env vars.
+ * This is the floor; a workspace's saved settings are laid over the top.
+ */
+function envConfig(): PendoAgentConfig {
   const cfg = useRuntimeConfig().pendoAgent as Partial<PendoAgentConfig> | undefined
   return {
     apiKey: cfg?.apiKey ?? '',
@@ -117,25 +123,110 @@ function readConfig(): PendoAgentConfig {
 }
 
 /**
- * Initialize the SDK once per process. Returns false when tracing is switched
- * off or unconfigured, in which case every helper here degrades to a pass-through.
+ * The config the SDK is currently running under.
  *
- * `init()` warns and ignores repeat calls, so the `initState` latch keeps dev
- * hot-reloads quiet.
+ * Reading the workspace's settings needs the database and is therefore async,
+ * but the tracing helpers are called from synchronous code. So the resolved
+ * config is cached here: `loadPendoAgentConfig()` refreshes it at the top of
+ * every agent turn (async, and cheap — a single kv read), and the sync paths
+ * use whatever it last resolved. Before the first turn, the env floor applies.
  */
-function ensureInitialized(): boolean {
-  if (initState !== 'pending') return initState === 'enabled'
+let activeConfig: PendoAgentConfig | null = null
+/** Identity of the config the SDK was last `init`ed with. */
+let activeSignature = ''
 
-  let config: PendoAgentConfig
+function readConfig(): PendoAgentConfig {
+  if (activeConfig) return activeConfig
   try {
-    config = readConfig()
+    return envConfig()
   } catch {
-    // useRuntimeConfig() outside a Nitro context — nothing we can do.
-    initState = 'disabled'
-    return false
+    // useRuntimeConfig() outside a Nitro context.
+    return { apiKey: '', agentId: '', endpoint: '', enabled: false, redact: false, defaultVisitorId: '', defaultAccountId: '' }
+  }
+}
+
+/**
+ * Only the fields that require re-initialising the SDK when they change. An
+ * empty signature means "report nowhere".
+ *
+ * Missing credentials count as off rather than as a destination to attempt:
+ * the SDK throws `apiKey is required`, and since blank is now the shipped
+ * default, letting that through would print a stack trace on every start of
+ * every unconfigured install for a state that is perfectly normal.
+ */
+function signature(c: PendoAgentConfig): string {
+  if (!c.enabled || !c.apiKey.trim() || !c.agentId.trim()) return ''
+  return [c.apiKey, c.agentId, c.endpoint, c.redact].join('|')
+}
+
+/**
+ * Resolve the effective config for an org and apply it to the SDK.
+ *
+ * Precedence is workspace settings → env/`nuxt.config` → nothing. A saved
+ * workspace config wins outright rather than field-by-field: a half-merged
+ * destination (this workspace's agent id against the deployment's app id) would
+ * report into a subscription neither party chose.
+ *
+ * Safe to call on every turn — it is a no-op unless the settings actually
+ * changed, in which case the SDK is shut down and re-initialised so a change
+ * saved in Admin takes effect without restarting the server.
+ */
+export async function loadPendoAgentConfig(orgId = 'default'): Promise<PendoAgentConfig> {
+  let next: PendoAgentConfig
+  try {
+    const saved = (await readAdminState(orgId)).pendoAgent
+    const configured = !!(saved?.apiKey?.trim() && saved?.agentId?.trim())
+    next = configured
+      ? {
+          apiKey: saved!.apiKey!.trim(),
+          agentId: saved!.agentId!.trim(),
+          endpoint: saved!.endpoint?.trim() || 'https://app.pendo.io',
+          enabled: saved!.enabled !== false,
+          redact: saved!.redact === true,
+          defaultVisitorId: saved!.defaultVisitorId?.trim() ?? '',
+          defaultAccountId: saved!.defaultAccountId?.trim() ?? ''
+        }
+      // An explicit `enabled: false` with no keys still means "off", so a
+      // workspace can opt out of a destination the deployment configured.
+      : { ...envConfig(), ...(saved && saved.enabled === false ? { enabled: false } : {}) }
+  } catch {
+    next = readConfig()
   }
 
-  if (!config.enabled || !config.apiKey || !config.agentId) {
+  activeConfig = next
+  lastApplied = applyConfig(next)
+  return next
+}
+
+/** Whether the most recent `applyConfig` left tracing on. */
+let lastApplied = false
+
+/** Called by the admin save handler so the change lands immediately. */
+export async function refreshPendoAgentConfig(orgId = 'default'): Promise<boolean> {
+  await loadPendoAgentConfig(orgId)
+  return lastApplied
+}
+
+/**
+ * Bring the SDK in line with `config`. `init()` ignores repeat calls, so a
+ * changed destination has to go through `shutdown()` first — otherwise saving
+ * new settings would appear to work while traces kept flowing to the old
+ * subscription.
+ */
+function applyConfig(config: PendoAgentConfig): boolean {
+  const sig = signature(config)
+  if (sig === activeSignature && initState !== 'pending') return initState === 'enabled'
+
+  if (initState === 'enabled') {
+    try {
+      pendoShutdown()
+    } catch (err: any) {
+      console.error('[pendo] shutdown before re-init failed:', err?.message ?? err)
+    }
+  }
+
+  activeSignature = sig
+  if (!sig) {
     initState = 'disabled'
     return false
   }
@@ -157,6 +248,20 @@ function ensureInitialized(): boolean {
     initState = 'disabled'
     return false
   }
+}
+
+/**
+ * Initialize the SDK from whatever config is currently known. Returns false when
+ * tracing is switched off or unconfigured, in which case every helper here
+ * degrades to a pass-through.
+ *
+ * Returns `applyConfig`'s own result rather than re-reading `initState`: the
+ * guard above narrows the variable to `'pending'` for the type-checker, which
+ * can't see that `applyConfig` reassigns module state.
+ */
+function ensureInitialized(): boolean {
+  if (initState !== 'pending') return initState === 'enabled'
+  return applyConfig(readConfig())
 }
 
 /** True when spans are actually being emitted. Exposed for health/debug output. */
@@ -267,6 +372,11 @@ export interface AgentTurnOptions {
    * `recordAgentReaction()` to attach a thumbs-up/down to this exact message.
    */
   onResponseMessageId?: (messageId: string) => void
+  /**
+   * Whose Pendo Agent Analytics settings this turn reports under. Defaults to
+   * the default org, which is what a single-workspace install has.
+   */
+  orgId?: string
 }
 
 /**
@@ -281,6 +391,10 @@ export async function withAgentTurn<T>(
   fn: () => Promise<T>,
   resolveResponseText: (result: T) => string
 ): Promise<T> {
+  // Pick up whatever Admin currently holds — and re-init the SDK if the
+  // destination changed since the last turn. One kv read; the turn that follows
+  // is orders of magnitude more expensive.
+  await loadPendoAgentConfig(options.orgId)
   if (!ensureInitialized()) return fn()
 
   const tracer = trace.getTracer(TRACER_NAME)

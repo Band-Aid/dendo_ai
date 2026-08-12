@@ -130,6 +130,7 @@ export default defineEventHandler(async (event) => {
   try {
     const result = await withAgentTurn(
       {
+        orgId,
         conversationId,
         prompt: question,
         visitorId: identity.visitorId,

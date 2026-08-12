@@ -242,6 +242,7 @@ export default defineEventHandler(async (event) => {
   const identity = resolveTurnIdentity(event, orgId)
   return withAgentTurn(
     {
+      orgId,
       conversationId: `qrerun:${notebookId}:${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       prompt: question,
       visitorId: identity.visitorId,

@@ -32,6 +32,35 @@ export interface PendoSettings {
   defaultAppId?: number
 }
 
+/**
+ * Pendo Agent Analytics — where this app reports its OWN agent conversations,
+ * which is a different destination from the aggregation API above.
+ *
+ * These were previously baked into `nuxt.config.ts`, which meant every install
+ * that never touched the env vars streamed its prompts and answers into
+ * whichever Pendo subscription those constants belonged to. Configuring them
+ * per workspace is what makes the destination the operator's own choice.
+ *
+ * `apiKey` is a Pendo *Public App ID* — the same value a browser snippet
+ * carries — so it is not masked on the way to the client; being able to read it
+ * back is how you confirm which subscription you are reporting into.
+ */
+export interface PendoAgentSettings {
+  /** Master switch. Off means no spans are created at all. */
+  enabled?: boolean
+  /** Pendo Public App ID. */
+  apiKey?: string
+  /** Identifies this agent within the subscription. */
+  agentId?: string
+  /** Defaults to https://app.pendo.io. */
+  endpoint?: string
+  /** Strip email/phone/SSN from event content before export. */
+  redact?: boolean
+  /** Fallbacks when a turn can't resolve an identity from the request. */
+  defaultVisitorId?: string
+  defaultAccountId?: string
+}
+
 export interface CustomSkill {
   id: string
   name: string
@@ -63,6 +92,8 @@ export interface AdminState {
   providers: ProviderConfig[]
   agents: AgentProfile[]
   pendo: PendoSettings
+  /** Absent means "never configured" — tracing then falls back to env vars. */
+  pendoAgent?: PendoAgentSettings
   settings: GeneralSettings
   mcpServers?: McpServerConfig[]
 }
@@ -99,6 +130,7 @@ export async function readAdminState(orgId = 'default'): Promise<AdminState> {
       providers: fromDb.providers ?? defaultState.providers,
       agents: fromDb.agents ?? defaultState.agents,
       pendo: fromDb.pendo ?? defaultState.pendo,
+      pendoAgent: fromDb.pendoAgent,
       settings: fromDb.settings ?? defaultState.settings,
       mcpServers: fromDb.mcpServers ?? []
     }
@@ -112,6 +144,7 @@ export async function readAdminState(orgId = 'default'): Promise<AdminState> {
         providers: legacy.providers ?? defaultState.providers,
         agents: legacy.agents ?? defaultState.agents,
         pendo: legacy.pendo ?? defaultState.pendo,
+        pendoAgent: legacy.pendoAgent,
         settings: legacy.settings ?? defaultState.settings,
         mcpServers: legacy.mcpServers ?? []
       }
@@ -128,6 +161,7 @@ export async function readAdminState(orgId = 'default'): Promise<AdminState> {
         providers: parsed.providers ?? defaultState.providers,
         agents: parsed.agents ?? defaultState.agents,
         pendo: parsed.pendo ?? defaultState.pendo,
+        pendoAgent: parsed.pendoAgent,
         settings: parsed.settings ?? defaultState.settings,
         mcpServers: parsed.mcpServers ?? []
       }
