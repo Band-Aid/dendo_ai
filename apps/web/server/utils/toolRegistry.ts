@@ -403,8 +403,17 @@ export async function executeTool(
     return executeBuiltInTool(name, args, orgId, sessionId, opts)
   }
 
-  // MCP tool
-  const config = mcpConfigs.find(c => c.cachedTools?.some(t => t.name === name) || c.enabled)
+  // MCP tool — route to the server that actually advertises it. The `|| enabled`
+  // fallback used to sit INSIDE this predicate, so it was evaluated per server:
+  // the first enabled server matched every tool name, including tools it does
+  // not own, and swallowed every call meant for the servers after it. With two
+  // servers configured (e.g. Pendo + a note-taking one) that silently sent
+  // `create_note` to Pendo, so "save this to a note" never wrote anything.
+  // A server whose tool list is cached and lacks `name` is not a candidate;
+  // one that has never been listed still is, since it may own the tool.
+  const config =
+    mcpConfigs.find(c => c.cachedTools?.some(t => t.name === name)) ??
+    mcpConfigs.find(c => !c.cachedTools?.length)
   if (!config) return { result: null, error: `No MCP server found for tool: ${name}` }
 
   try {
