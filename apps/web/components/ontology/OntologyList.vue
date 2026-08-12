@@ -3,7 +3,7 @@ import { ref, computed, h, watch } from 'vue'
 import { SearchOutlined, CloseCircleOutlined } from '@ant-design/icons-vue'
 import { useI18n } from '~/composables/useI18n'
 import { ONTOLOGY_KINDS, kindColor } from '~/composables/useOntologyKinds'
-import type { ConceptMetric, OntologyConcept, OntologyEdge } from '~/types/ontology'
+import type { ConceptMetric, OntologyConcept, OntologyEdge, OverlayWindow } from '~/types/ontology'
 
 const { t } = useI18n()
 
@@ -21,9 +21,12 @@ const props = defineProps<{
   nodes: GraphNode[]
   edges: OntologyEdge[]
   concepts: OntologyConcept[]
-  metrics?: Record<string, { events30d: number; visitors30d: number }>
+  metrics?: Record<string, { events: number; visitors: number }>
   conceptMetrics?: Record<string, ConceptMetric>
   selectedId?: string | null
+  /** Window the usage column covers — shown so the numbers can't be read as
+   *  a default 30 days when a shorter range is applied. */
+  usageWindow?: OverlayWindow | null
 }>()
 const emit = defineEmits<{ select: [nodeId: string] }>()
 
@@ -93,8 +96,8 @@ const allRows = computed<Row[]>(() =>
       name: n.name,
       kindLabel: t(`ui.ontology.legend.${n.kind}`),
       context,
-      events: usage?.events30d ?? null,
-      visitors: usage?.visitors30d ?? null,
+      events: usage?.events ?? null,
+      visitors: usage?.visitors ?? null,
       // An errored KPI is not a KPI — show a blank cell, the panel explains why.
       kpi: kpiRaw && !kpiRaw.error ? kpiRaw : null,
       haystack: `${n.name}\n${context}\n${concept?.definition ?? ''}`.toLowerCase()
@@ -180,6 +183,13 @@ function rowProps(record: Row) {
           ? t('ui.ontology.listCountFiltered', { shown: rows.length, total: allRows.length })
           : t('ui.ontology.listCount', { n: allRows.length }) }}
       </span>
+      <span v-if="usageWindow" class="ol-count mono" :class="{ 'is-partial': usageWindow.partial }">
+        {{ t(usageWindow.partial ? 'ui.ontology.rangeCaptionPartial' : 'ui.ontology.rangeCaption', {
+          from: usageWindow.from,
+          to: usageWindow.to,
+          days: usageWindow.days
+        }) }}
+      </span>
       <a-button
         v-if="filtered"
         size="small"
@@ -263,6 +273,10 @@ function rowProps(record: Row) {
   letter-spacing: 0.02em;
   margin-left: auto;
 }
+/* The second caption sits beside the first rather than being pushed to the far
+   edge by another auto margin. */
+.ol-count + .ol-count { margin-left: 12px; }
+.ol-count.is-partial { color: var(--accent, #a8412b); }
 .ol-table-wrap { flex: 1; min-height: 0; overflow: auto; }
 .ol-name { display: flex; align-items: flex-start; gap: 9px; }
 .ol-dot {

@@ -201,7 +201,7 @@
       "resetDone": "Map rebuilt from scratch: {features} features, {pages} pages, {segments} segments",
       "resetCleared": "Map cleared — run Sync when Pendo is configured",
       "refreshOverlay": "Refresh usage",
-      "refreshOverlayTip": "Re-run the 30-day usage queries that size the nodes",
+      "refreshOverlayTip": "Re-run the usage queries that size the nodes, over the selected window",
       "overlayPartial": "Usage overlay is partial ({detail})",
       "suggest": "Suggest concepts",
       "suggestTitle": "Suggested concepts",
@@ -250,7 +250,7 @@
       "pickNotebookPh": "Choose a notebook",
       "saveQuestionHint": "Lands as a re-runnable question cell — open the notebook and hit Run.",
       "questionSaved": "Question saved to notebook",
-      "overlayLabel": "{n} events / 30d",
+      "overlayLabel": "{n} events",
       "visitorsLabel": "{n} visitors",
       "kpiColumn": "KPI column (optional)",
       "kpiColumnPh": "Result column to headline, e.g. visitors — otherwise auto-detected",
@@ -280,7 +280,15 @@
         "page": "Page",
         "segment": "Segment",
         "concept": "Concept"
-      }
+      },
+      "rangePresetToday": "Today (so far)",
+      "rangePreset7": "Last 7 days",
+      "rangePreset30": "Last 30 days",
+      "rangePreset90": "Last 90 days",
+      "rangePreset7Incl": "Last 7 days incl. today",
+      "rangeCaption": "Usage: {from} → {to} ({days}d)",
+      "rangeCaptionPartial": "Usage: {from} → {to} ({days}d) · today still counting",
+      "moreActions": "More actions"
     },
     "workspace": {
       "label": "Workspace",

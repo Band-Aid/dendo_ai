@@ -7,9 +7,11 @@ import {
   QuestionCircleOutlined,
   BulbOutlined,
   PlusOutlined,
-  ReloadOutlined
+  ReloadOutlined,
+  MoreOutlined
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
+import dayjs, { type Dayjs } from 'dayjs'
 import OntologyGraph from '~/components/ontology/OntologyGraph.vue'
 import OntologyList from '~/components/ontology/OntologyList.vue'
 import NodeDetailPanel from '~/components/ontology/NodeDetailPanel.vue'
@@ -19,7 +21,7 @@ import AskPanel from '~/components/ontology/AskPanel.vue'
 import { useApi } from '~/composables/useApi'
 import { useOrg } from '~/composables/useOrg'
 import { useI18n } from '~/composables/useI18n'
-import type { OntologyGraphResponse, OntologyConcept, OverlayMetrics, ConceptMetricsBlob } from '~/types/ontology'
+import type { OntologyGraphResponse, OntologyConcept, OverlayMetrics, OverlayWindow, ConceptMetricsBlob } from '~/types/ontology'
 
 const { t, locale } = useI18n()
 const { apiFetch } = useApi()
@@ -168,15 +170,67 @@ async function load() {
   }
 }
 
+/**
+ * The usage window the map is painted with. The default is the last 30
+ * *complete* days, ending yesterday — a still-filling day at the end of a long
+ * window drags every number down for no real reason.
+ *
+ * Today is selectable, though: "what's happening right now" is a legitimate
+ * question, and Pendo does return the partial bucket. The server marks such a
+ * window `partial` and the caption says so, so a part-day is never mistaken for
+ * a settled one.
+ *
+ * `null` means "use the server's rolling default", which is what we want on
+ * first load: the server keeps it relative, so an overlay cached yesterday
+ * doesn't pin today's map to yesterday's window.
+ */
+const DEFAULT_RANGE_DAYS = 30
+const usageRange = ref<[Dayjs, Dayjs] | null>(null)
+
+const rangePresets = computed(() => {
+  const today = dayjs()
+  const yesterday = today.subtract(1, 'day')
+  return [
+    { label: t('ui.ontology.rangePresetToday'), value: [today, today] as [Dayjs, Dayjs] },
+    { label: t('ui.ontology.rangePreset7'), value: [yesterday.subtract(6, 'day'), yesterday] as [Dayjs, Dayjs] },
+    { label: t('ui.ontology.rangePreset30'), value: [yesterday.subtract(DEFAULT_RANGE_DAYS - 1, 'day'), yesterday] as [Dayjs, Dayjs] },
+    { label: t('ui.ontology.rangePreset90'), value: [yesterday.subtract(89, 'day'), yesterday] as [Dayjs, Dayjs] },
+    { label: t('ui.ontology.rangePreset7Incl'), value: [today.subtract(6, 'day'), today] as [Dayjs, Dayjs] }
+  ]
+})
+
+/**
+ * Future days hold nothing. Today is allowed — the browser's date can be a day
+ * off from the subscription's, so the boundary is deliberately generous and the
+ * server decides what "partial" actually means.
+ */
+const disabledDate = (d: Dayjs) => !!d && d.isAfter(dayjs(), 'day')
+
+/** One label for both views, so the map and the list can't disagree. */
+function windowCaption(w: OverlayWindow): string {
+  const key = w.partial ? 'ui.ontology.rangeCaptionPartial' : 'ui.ontology.rangeCaption'
+  return t(key, { from: w.from, to: w.to, days: w.days })
+}
+
+function onRangeChange(v: [Dayjs, Dayjs] | null) {
+  usageRange.value = v && v[0] && v[1] ? v : null
+  // A different window is different data, so never serve the cached one.
+  loadOverlay(true)
+}
+
 /** Non-blocking usage overlay — the graph renders fine without it. */
 async function loadOverlay(force = false) {
   if (!graph.value?.meta.pendoConfigured) return
   overlayLoading.value = true
   try {
+    const range = usageRange.value
     overlay.value = await apiFetch<OverlayMetrics>('/api/ontology/overlay', {
       method: 'POST',
       headers: headers(),
-      body: { force }
+      body: {
+        force,
+        ...(range ? { from: range[0].format('YYYY-MM-DD'), to: range[1].format('YYYY-MM-DD') } : {})
+      }
     })
     if (overlay.value?.errors) {
       const parts = Object.entries(overlay.value.errors).map(([k, v]) => `${k}: ${v}`)
@@ -205,6 +259,13 @@ async function loadConceptMetrics(force = false) {
 }
 
 const resetting = ref(false)
+const resetConfirmOpen = ref(false)
+
+/** Confirm-then-reset; the modal closes only once the work is done or has failed. */
+async function onResetConfirmed() {
+  await resetMap()
+  resetConfirmOpen.value = false
+}
 
 /** Wipe structure + concepts + overlay cache and rebuild fresh from Pendo. */
 async function resetMap() {
@@ -319,62 +380,100 @@ onMounted(async () => {
           <template v-if="graph?.meta.appIdMismatch"> · <span class="op-truncated">{{ t('ui.ontology.appIdMismatchWarning', { configured: graph.meta.appIdMismatch.configured, found: graph.meta.appIdMismatch.found.join(', ') }) }}</span></template>
         </p>
       </div>
+      <!--
+        Two groups, not one queue of nine buttons: what you're LOOKING at on the
+        left, what you can DO on the right. Everything occasional or destructive
+        lives in the overflow menu, which is what kept the bar wrapping onto a
+        second row.
+      -->
       <div class="op-actions">
-        <a-segmented
-          :value="view"
-          :options="[
-            { label: t('ui.ontology.viewMap'), value: 'map' },
-            { label: t('ui.ontology.viewList'), value: 'list' }
-          ]"
-          @change="(v: any) => (view = v)"
-        />
-        <a-segmented
-          v-if="view === 'map' && graph && graph.concepts.length > 0"
-          :value="lens"
-          :options="[
-            { label: t('ui.ontology.lensConcepts'), value: 'concepts' },
-            { label: t('ui.ontology.lensAll'), value: 'all' }
-          ]"
-          @change="(v: any) => { lens = v; lensTouched = true }"
-        />
-        <a-button
-          type="primary"
-          ghost
-          :icon="h(QuestionCircleOutlined)"
-          @click="openAsk"
-        >{{ t('ui.ontology.askButton') }}</a-button>
-        <a-tooltip :title="t('ui.ontology.refreshOverlayTip')">
+        <div class="op-actions-view">
+          <a-segmented
+            :value="view"
+            :options="[
+              { label: t('ui.ontology.viewMap'), value: 'map' },
+              { label: t('ui.ontology.viewList'), value: 'list' }
+            ]"
+            @change="(v: any) => (view = v)"
+          />
+          <a-segmented
+            v-if="view === 'map' && graph && graph.concepts.length > 0"
+            :value="lens"
+            :options="[
+              { label: t('ui.ontology.lensConcepts'), value: 'concepts' },
+              { label: t('ui.ontology.lensAll'), value: 'all' }
+            ]"
+            @change="(v: any) => { lens = v; lensTouched = true }"
+          />
+          <!-- The range and its refresh are one control: refresh re-runs the
+               window the picker is showing, so they sit together. -->
+          <div class="op-range-group">
+            <a-range-picker
+              :value="usageRange"
+              :presets="rangePresets"
+              :disabled-date="disabledDate"
+              :disabled="!graph?.meta.pendoConfigured"
+              :allow-clear="true"
+              class="op-range"
+              :placeholder="[t('ui.ontology.rangePreset30'), '']"
+              @change="(v: any) => onRangeChange(v)"
+            />
+            <a-tooltip :title="t('ui.ontology.refreshOverlayTip')">
+              <a-button
+                :icon="h(ReloadOutlined)"
+                :loading="overlayLoading"
+                :disabled="!graph?.meta.pendoConfigured"
+                :aria-label="t('ui.ontology.refreshOverlay')"
+                @click="loadOverlay(true); loadConceptMetrics(true)"
+              />
+            </a-tooltip>
+          </div>
+        </div>
+
+        <div class="op-actions-do">
           <a-button
-            :icon="h(ReloadOutlined)"
-            :loading="overlayLoading"
-            :disabled="!graph?.meta.pendoConfigured"
-            @click="loadOverlay(true); loadConceptMetrics(true)"
-          >{{ t('ui.ontology.refreshOverlay') }}</a-button>
-        </a-tooltip>
-        <a-button :icon="h(BulbOutlined)" @click="suggestOpen = true">
-          {{ t('ui.ontology.suggest') }}
-        </a-button>
-        <a-button :icon="h(PlusOutlined)" @click="openNewConcept">
-          {{ t('ui.ontology.newConcept') }}
-        </a-button>
-        <a-button
-          type="primary"
-          :icon="h(SyncOutlined)"
-          :loading="syncing"
-          :disabled="graph ? !graph.meta.pendoConfigured : false"
-          @click="sync"
-        >{{ t('ui.ontology.sync') }}</a-button>
-        <a-popconfirm
-          :title="t('ui.ontology.resetConfirm')"
-          :ok-text="t('ui.ontology.resetOk')"
-          ok-type="danger"
-          @confirm="resetMap"
-        >
-          <a-button danger :icon="h(DeleteOutlined)" :loading="resetting">
-            {{ t('ui.ontology.reset') }}
+            type="primary"
+            ghost
+            :icon="h(QuestionCircleOutlined)"
+            @click="openAsk"
+          >{{ t('ui.ontology.askButton') }}</a-button>
+          <a-button :icon="h(PlusOutlined)" @click="openNewConcept">
+            {{ t('ui.ontology.newConcept') }}
           </a-button>
-        </a-popconfirm>
+          <a-button
+            type="primary"
+            :icon="h(SyncOutlined)"
+            :loading="syncing"
+            :disabled="graph ? !graph.meta.pendoConfigured : false"
+            @click="sync"
+          >{{ t('ui.ontology.sync') }}</a-button>
+          <a-dropdown :trigger="['click']" placement="bottomRight">
+            <a-button :icon="h(MoreOutlined)" :aria-label="t('ui.ontology.moreActions')" />
+            <template #overlay>
+              <a-menu>
+                <a-menu-item key="suggest" @click="suggestOpen = true">
+                  <component :is="h(BulbOutlined)" /> {{ t('ui.ontology.suggest') }}
+                </a-menu-item>
+                <a-menu-divider />
+                <a-menu-item key="reset" danger :disabled="resetting" @click="resetConfirmOpen = true">
+                  <component :is="h(DeleteOutlined)" /> {{ t('ui.ontology.reset') }}
+                </a-menu-item>
+              </a-menu>
+            </template>
+          </a-dropdown>
+        </div>
       </div>
+
+      <!-- Reset is destructive, so it keeps its confirmation even though the
+           trigger now lives in a menu (a popconfirm can't anchor to a menu item
+           that unmounts when the dropdown closes). -->
+      <a-modal
+        v-model:open="resetConfirmOpen"
+        :title="t('ui.ontology.resetConfirm')"
+        :ok-text="t('ui.ontology.resetOk')"
+        :ok-button-props="{ danger: true, loading: resetting }"
+        @ok="onResetConfirmed"
+      />
     </header>
 
     <a-spin :spinning="loading" wrapper-class-name="op-spin">
@@ -399,6 +498,14 @@ onMounted(async () => {
             <span v-if="lens === 'concepts'" class="op-lens-caption mono">
               {{ t('ui.ontology.lensShown', { shown: visibleNodes.length, total: graph.nodes.length }) }}
             </span>
+            <!-- Node sizes and every usage number below come from this window;
+                 saying so stops a 7-day map being read as a 30-day one, and a
+                 part-day being read as a crash. -->
+            <span
+              v-if="overlay?.window"
+              class="op-range-caption mono"
+              :class="{ 'is-partial': overlay.window.partial }"
+            >{{ windowCaption(overlay.window) }}</span>
             <OntologyGraph
               :nodes="visibleNodes"
               :edges="visibleEdges"
@@ -417,6 +524,7 @@ onMounted(async () => {
             :metrics="overlay?.metrics"
             :concept-metrics="conceptMetrics?.metrics"
             :selected-id="selectedId"
+            :usage-window="overlay?.window"
             @select="selectFromList"
           />
         </div>
@@ -491,7 +599,33 @@ onMounted(async () => {
 }
 .op-sub { margin: 4px 0 0; font-size: 12.5px; color: var(--muted); }
 .op-truncated { color: var(--accent); }
-.op-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+/* The bar spans the header's full width so the two groups can separate; without
+   this it shrink-wraps its content and both groups huddle on the right. */
+.op-actions {
+  display: flex;
+  flex: 1 1 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 20px;
+  flex-wrap: wrap;
+}
+.op-actions-view,
+.op-actions-do { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* Picker and its refresh read as one control, so they butt together and the
+   seam between them is collapsed. */
+.op-range-group { display: flex; align-items: center; }
+.op-range-group :deep(.ant-picker) {
+  border-start-end-radius: 0;
+  border-end-end-radius: 0;
+}
+.op-range-group :deep(.ant-btn) {
+  border-start-start-radius: 0;
+  border-end-start-radius: 0;
+  margin-inline-start: -1px;
+}
+.op-range-group :deep(.ant-picker-focused),
+.op-range-group :deep(.ant-btn:hover) { z-index: 1; }
 /* min-height:0 all the way down: a flex item defaults to min-height:auto and so
    refuses to shrink below its content, which let the list view's table push the
    card past the bottom of the window instead of scrolling inside it. */
@@ -531,7 +665,8 @@ onMounted(async () => {
   min-height: 480px;
 }
 .op-graph-wrap { flex: 1; min-width: 0; min-height: 0; position: relative; }
-.op-lens-caption {
+.op-lens-caption,
+.op-range-caption {
   position: absolute;
   top: 10px;
   left: 14px;
@@ -541,6 +676,22 @@ onMounted(async () => {
   background: color-mix(in srgb, var(--surface, #fff) 82%, transparent);
   padding: 2px 8px;
   border-radius: 999px;
+}
+
+/* Sits under the lens caption when both are showing, so neither is hidden. */
+.op-lens-caption + .op-range-caption {
+  top: 32px;
+}
+
+/* A still-counting window is a caveat on every number on screen, so the caption
+   stops being quiet grey and reads as a notice. */
+.op-range-caption.is-partial {
+  color: var(--accent, #a8412b);
+  background: color-mix(in srgb, var(--accent, #a8412b) 10%, var(--surface, #fff));
+}
+
+.op-range {
+  width: 230px;
 }
 .op-panel {
   width: 340px;

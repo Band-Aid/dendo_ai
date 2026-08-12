@@ -24,7 +24,7 @@ const props = defineProps<{
   concepts: OntologyConcept[]
   edges: OntologyEdge[]
   nodes: GraphNode[]
-  metrics?: Record<string, { events30d: number; visitors30d: number }>
+  metrics?: Record<string, { events: number; visitors: number }>
   conceptMetrics?: Record<string, ConceptMetric>
   /** Concepts lens hides unmeasured assets — areas expand on demand. */
   lens?: 'concepts' | 'all'
@@ -132,8 +132,8 @@ function entityFallback(): string {
 
     <!-- Usage overlay (entities) -->
     <div v-if="usage" class="ndp-usage mono">
-      {{ t('ui.ontology.overlayLabel', { n: usage.events30d.toLocaleString() }) }} ·
-      {{ t('ui.ontology.visitorsLabel', { n: usage.visitors30d.toLocaleString() }) }}
+      {{ t('ui.ontology.overlayLabel', { n: usage.events.toLocaleString() }) }} ·
+      {{ t('ui.ontology.visitorsLabel', { n: usage.visitors.toLocaleString() }) }}
     </div>
 
     <div v-if="node.url" class="ndp-prop mono">{{ node.url }}</div>

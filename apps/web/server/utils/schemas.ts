@@ -113,8 +113,22 @@ export const conceptUpsertSchema = z.object({
   newEntities: z.array(conceptNewEntitySchema).max(20).default([])
 })
 
+/** `YYYY-MM-DD`, and a real date — `2026-02-31` parses as a Date but isn't one. */
+const calendarDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD').refine(s => {
+  const [y, m, d] = s.split('-').map(Number)
+  const dt = new Date(Date.UTC(y, m - 1, d))
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d
+}, 'not a real calendar date')
+
 export const ontologyOverlaySchema = z.object({
-  force: z.boolean().default(false)
+  force: z.boolean().default(false),
+  /** Inclusive usage window. Both or neither; omitted means the default 30 days. */
+  from: calendarDay.optional(),
+  to: calendarDay.optional()
+}).refine(v => (v.from == null) === (v.to == null), {
+  message: 'from and to must be provided together'
+}).refine(v => !v.from || !v.to || v.from <= v.to, {
+  message: 'from must not be after to'
 })
 
 export const conceptMetricsSchema = z.object({

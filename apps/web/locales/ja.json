@@ -201,7 +201,7 @@
       "resetDone": "マップをゼロから再構築しました: フィーチャー {features} 件、ページ {pages} 件、セグメント {segments} 件",
       "resetCleared": "マップを消去しました — Pendo 設定後に同期を実行してください",
       "refreshOverlay": "利用状況を更新",
-      "refreshOverlayTip": "ノードのサイズを決める過去30日の利用状況クエリを再実行します",
+      "refreshOverlayTip": "選択した期間で、ノードのサイズを決める利用状況クエリを再実行します",
       "overlayPartial": "利用状況は一部のみ取得できました（{detail}）",
       "suggest": "コンセプトを提案",
       "suggestTitle": "提案されたコンセプト",
@@ -250,7 +250,7 @@
       "pickNotebookPh": "ノートブックを選択",
       "saveQuestionHint": "再実行できる質問セルとして追加されます。ノートブックを開いて実行してください。",
       "questionSaved": "質問をノートブックに保存しました",
-      "overlayLabel": "{n} イベント / 30日",
+      "overlayLabel": "{n} イベント",
       "visitorsLabel": "{n} 訪問者",
       "kpiColumn": "KPI列（任意）",
       "kpiColumnPh": "ヘッドラインにする結果列（例: visitors）。未指定なら自動検出",
@@ -280,7 +280,15 @@
         "page": "ページ",
         "segment": "セグメント",
         "concept": "コンセプト"
-      }
+      },
+      "rangePresetToday": "今日（途中）",
+      "rangePreset7": "過去7日",
+      "rangePreset30": "過去30日",
+      "rangePreset90": "過去90日",
+      "rangePreset7Incl": "今日を含む過去7日",
+      "rangeCaption": "利用状況: {from} → {to}（{days}日）",
+      "rangeCaptionPartial": "利用状況: {from} → {to}（{days}日）・本日は集計途中",
+      "moreActions": "その他の操作"
     },
     "workspace": {
       "label": "ワークスペース",

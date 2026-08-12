@@ -26,15 +26,42 @@ interface Props {
   nodes: GraphNode[]
   edges: OntologyEdge[]
   /** node id → usage; sizes the nodes. Optional — graph renders without it. */
-  metrics?: Record<string, { events30d: number; visitors30d: number }>
+  metrics?: Record<string, { events: number; visitors: number }>
   /** concept id → live KPI; painted into concept labels. */
   conceptMetrics?: Record<string, ConceptMetric>
   selectedId?: string | null
   /** Subgraph of the current question — highlighted; everything else dims. */
   highlightIds?: string[] | null
 }
+
 const props = defineProps<Props>()
 const emit = defineEmits<{ select: [nodeId: string | null] }>()
+
+/**
+ * What the highlight/dim treatment applies to.
+ *
+ * ECharts' `emphasis.focus: 'adjacency'` only lasts as long as the cursor is
+ * over a node, so selecting one used to leave nothing but a thin border — the
+ * neighbourhood you clicked to inspect vanished the moment you moved the mouse
+ * away to read the detail panel. Selection therefore derives the same adjacency
+ * set that hovering shows, and renders it through the existing highlight path
+ * so it persists until you select something else.
+ *
+ * An explicit `highlightIds` (the Ask panel's answer subgraph) wins: it is a
+ * deliberate, larger claim about what matters right now, and clicking a node
+ * inside it to read the details shouldn't collapse it to that node's immediate
+ * neighbours.
+ */
+function highlightSet(): Set<string> | null {
+  if (props.highlightIds?.length) return new Set(props.highlightIds)
+  if (!props.selectedId) return null
+  const adjacent = new Set<string>([props.selectedId])
+  for (const e of props.edges) {
+    if (e.from === props.selectedId) adjacent.add(e.to)
+    else if (e.to === props.selectedId) adjacent.add(e.from)
+  }
+  return adjacent
+}
 
 const el = ref<HTMLElement | null>(null)
 let chart: echarts.ECharts | null = null
@@ -50,8 +77,8 @@ function symbolSize(nodeId: string, kind: string): number {
   if (kind === 'concept') return kpiFor(nodeId) ? 32 : 26
   const base = kind === 'productArea' ? 20 : 12
   const m = props.metrics?.[nodeId]
-  if (!m || m.events30d <= 0) return base
-  return Math.min(46, base + Math.log10(1 + m.events30d) * 5)
+  if (!m || m.events <= 0) return base
+  return Math.min(46, base + Math.log10(1 + m.events) * 5)
 }
 
 function kpiFor(nodeId: string): ConceptMetric | undefined {
@@ -153,7 +180,7 @@ function settleMs(friction: number): number {
 }
 
 function buildOption() {
-  const highlight = props.highlightIds?.length ? new Set(props.highlightIds) : null
+  const highlight = highlightSet()
   // Pin only when every visible node has a known position; a single new node
   // (lens switch, fresh sync) drops back to force for one pass, with the
   // existing nodes held fixed so only the newcomer finds a home.
@@ -226,7 +253,7 @@ function buildOption() {
         const m = props.metrics?.[node.id]
         const kindLabel = t(`ui.ontology.legend.${node.kind}`)
         const usage = m
-          ? `<br/>${t('ui.ontology.overlayLabel', { n: m.events30d.toLocaleString() })} · ${t('ui.ontology.visitorsLabel', { n: m.visitors30d.toLocaleString() })}`
+          ? `<br/>${t('ui.ontology.overlayLabel', { n: m.events.toLocaleString() })} · ${t('ui.ontology.visitorsLabel', { n: m.visitors.toLocaleString() })}`
           : ''
         return `<strong>${node.name}</strong><br/><span style="opacity:0.7">${kindLabel}</span>${usage}`
       }
