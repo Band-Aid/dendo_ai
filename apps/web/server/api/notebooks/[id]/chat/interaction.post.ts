@@ -1,8 +1,7 @@
 import { z } from 'zod'
 import { getNotebook } from '~/server/utils/notebookStore'
 import { getOrCreateChatConversationId } from '~/server/utils/chatMessageStore'
-import { recordAgentReaction, resolveTurnIdentity } from '~/server/utils/pendoTracing'
-
+import { loadPendoAgentConfig, recordAgentReaction, resolveTurnIdentity } from '~/server/utils/pendoTracing'
 /**
  * What the user did with an agent answer. These mirror the action buttons on an
  * assistant message in the chat sidebar; each one is a signal that the answer
