@@ -1,6 +1,5 @@
 import { z } from 'zod'
-import { recordAgentReaction, resolveTurnIdentity } from '~/server/utils/pendoTracing'
-
+import { loadPendoAgentConfig, recordAgentReaction, resolveTurnIdentity } from '~/server/utils/pendoTracing'
 const schema = z.object({
   /** Same conversation id the turn was reported under (see pendoTracing.ts). */
   conversationId: z.string().min(1),
