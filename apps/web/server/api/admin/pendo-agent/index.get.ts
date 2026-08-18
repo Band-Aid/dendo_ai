@@ -30,7 +30,10 @@ export default defineEventHandler(async (event) => {
       redact: effective.redact
     },
     /** True when nothing is saved but env vars are supplying a destination. */
-    fromEnvironment: !state.pendoAgent?.apiKey?.trim() && !!effective.apiKey,
-    tracing: isPendoTracingEnabled()
+    fromEnvironment:
+      !state.pendoAgent?.apiKey?.trim() &&
+      effective.enabled !== false &&
+      !!effective.apiKey.trim() &&
+      !!effective.agentId.trim(),
   }
 })
