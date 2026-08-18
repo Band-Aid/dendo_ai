@@ -84,6 +84,11 @@ function mineOntology(orgId: string, ontology: OntologyBlob): string {
   const nodes = ontology.structural.nodes
   const overlay = readOverlay(orgId)
   const usage = overlay?.metrics ?? {}
+  // The overlay window is user-chosen, so the prompt must state which one
+  // these numbers describe rather than asserting a fixed 30 days.
+  const windowLabel = overlay?.window
+    ? `${overlay.window.days}d: ${overlay.window.from}..${overlay.window.to}`
+    : '30d'
   const nodeName = new Map(nodes.map(n => [n.id, n.name]))
   const areaName = new Map(
     nodes.filter(n => n.kind === 'productArea').map(n => [n.pendoId, n.name])
@@ -92,12 +97,12 @@ function mineOntology(orgId: string, ontology: OntologyBlob): string {
 
   const withUsage = Object.entries(usage)
     .filter(([id]) => nodeName.has(id))
-    .sort((a, b) => b[1].events30d - a[1].events30d)
+    .sort((a, b) => b[1].events - a[1].events)
 
   const line = ([id, m]: (typeof withUsage)[number]) => {
     const n = nodes.find(x => x.id === id)!
     const area = n.kind === 'feature' && n.groupId ? areaName.get(n.groupId) : undefined
-    return `- ${n.name} (${n.kind}${area ? `, area: ${area}` : ''}) — ${m.events30d.toLocaleString()} events / ${m.visitors30d.toLocaleString()} visitors (30d)${covered.has(id) ? ' [already measured by a concept]' : ''}`
+    return `- ${n.name} (${n.kind}${area ? `, area: ${area}` : ''}) — ${m.events.toLocaleString()} events / ${m.visitors.toLocaleString()} visitors (${windowLabel})${covered.has(id) ? ' [already measured by a concept]' : ''}`
   }
 
   const top = withUsage.slice(0, 20).map(line)
@@ -111,7 +116,7 @@ function mineOntology(orgId: string, ontology: OntologyBlob): string {
     if (!areaStats.has(key)) areaStats.set(key, { name: areaName.get(key) ?? key, features: 0, events: 0 })
     const s = areaStats.get(key)!
     s.features++
-    s.events += usage[n.id]?.events30d ?? 0
+    s.events += usage[n.id]?.events ?? 0
   }
   const areas = [...areaStats.values()]
     .sort((a, b) => b.events - a.events)
@@ -122,7 +127,7 @@ function mineOntology(orgId: string, ontology: OntologyBlob): string {
 
   return [
     overlay
-      ? `Usage leaders (30d, from the live overlay):\n${top.join('\n') || '(no usage data)'}`
+      ? `Usage leaders (${windowLabel}, from the live overlay):\n${top.join('\n') || '(no usage data)'}`
       : 'Usage overlay unavailable — reason from structure only.',
     uncoveredHot.length
       ? `HIGH-USAGE ENTITIES NOT MEASURED BY ANY CONCEPT (the coverage gaps — strongest candidates):\n${uncoveredHot.join('\n')}`

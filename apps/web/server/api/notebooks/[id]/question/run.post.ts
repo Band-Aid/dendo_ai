@@ -5,6 +5,7 @@ import { buildSystemPrompt, ensureLayer1Loaded } from '~/server/utils/systemProm
 import { buildOntologyDigest } from '~/server/utils/ontologyDigest'
 import { buildAllTools } from '~/server/utils/toolRegistry'
 import { runAgentLoop } from '~/server/utils/agentLoop'
+import { withAgentTurn, resolveTurnIdentity } from '~/server/utils/pendoTracing'
 import { abortSession } from '~/server/utils/aggregation'
 import type { ChatAggregation } from '~/server/utils/chatMessageStore'
 
@@ -85,25 +86,44 @@ export default defineEventHandler(async (event) => {
   // can never inherit or pollute earlier conversation state.
   const sessionId = `qcell-${notebookId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 
+  // Each run is a deliberately stateless single turn, so the run's own session
+  // id is also its Pendo conversation id.
+  const identity = resolveTurnIdentity(event, orgId)
+
   try {
-    const result = await runAgentLoop({
-      provider,
-      model: agent.model,
-      systemPrompt,
-      messages: [{ role: 'user', content: question }],
-      tools: allTools,
-      maxTokens: state.settings?.maxTokens ?? 4096,
-      orgId,
-      sessionId,
-      mcpConfigs,
-      defaultSegmentId: notebook.default_segment_id ?? null,
-      // Non-streaming endpoint — the callbacks are required by the loop but we
-      // only care about the final, structured result here.
-      onTextDelta: () => {},
-      onToolStart: () => {},
-      onToolEnd: () => {},
-      onDone: () => {}
-    })
+    const result = await withAgentTurn(
+      {
+        orgId,
+        conversationId: `qcell:${sessionId}`,
+        prompt: question,
+        visitorId: identity.visitorId,
+        accountId: identity.accountId,
+        eventProperties: {
+          surface: 'question-cell-run',
+          notebookId,
+          ...(originConceptId ? { originConceptId } : {})
+        }
+      },
+      () => runAgentLoop({
+        provider,
+        model: agent.model,
+        systemPrompt,
+        messages: [{ role: 'user', content: question }],
+        tools: allTools,
+        maxTokens: state.settings?.maxTokens ?? 4096,
+        orgId,
+        sessionId,
+        mcpConfigs,
+        defaultSegmentId: notebook.default_segment_id ?? null,
+        // Non-streaming endpoint — the callbacks are required by the loop but we
+        // only care about the final, structured result here.
+        onTextDelta: () => {},
+        onToolStart: () => {},
+        onToolEnd: () => {},
+        onDone: () => {}
+      }),
+      (r) => r.textContent
+    )
 
     const aggregations: ChatAggregation[] = result.aggregationResults.map(r => ({
       dsl: r.dsl,

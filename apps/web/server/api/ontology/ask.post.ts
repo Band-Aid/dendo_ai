@@ -4,6 +4,7 @@ import { buildSystemPrompt, ensureLayer1Loaded } from '~/server/utils/systemProm
 import { buildOntologyDigest } from '~/server/utils/ontologyDigest'
 import { buildAllTools } from '~/server/utils/toolRegistry'
 import { runAgentLoop } from '~/server/utils/agentLoop'
+import { withAgentTurn, resolveTurnIdentity } from '~/server/utils/pendoTracing'
 import { abortSession } from '~/server/utils/aggregation'
 import { evolveConcepts } from '~/server/utils/conceptEvolution'
 import { readOntology } from '~/server/utils/ontologyStore'
@@ -126,24 +127,43 @@ export default defineEventHandler(async (event) => {
   // The related subgraph needs no agent — paint the graph highlight now.
   emit(event, { type: 'related', nodeIds: relatedNodeIds })
 
+  // Each ask from the map is its own one-shot conversation — the panel keeps no
+  // thread — so the generated session id doubles as the Pendo conversation id.
+  const identity = resolveTurnIdentity(event, orgId)
+
   try {
-    const result = await runAgentLoop({
-      provider,
-      model: agent.model,
-      systemPrompt,
-      messages: [{ role: 'user', content: input.question }],
-      tools: [...builtIn, ...mcp],
-      maxTokens: state.settings?.maxTokens ?? 4096,
-      orgId,
-      sessionId,
-      mcpConfigs,
-      defaultSegmentId: null,
-      onTextDelta: (text) => emit(event, { type: 'text', text }),
-      onToolStart: (tool, explanation) => emit(event, { type: 'tool_start', tool, explanation }),
-      onToolEnd: (tool, success, rowCount, truncated) =>
-        emit(event, { type: 'tool_result', success, rowCount, truncated }),
-      onDone: (reason) => emit(event, { type: 'done', reason })
-    })
+    const result = await withAgentTurn(
+      {
+        orgId,
+        conversationId: `ask:${sessionId}`,
+        prompt: input.question,
+        visitorId: identity.visitorId,
+        accountId: identity.accountId,
+        eventProperties: {
+          surface: 'product-map-ask',
+          ...(input.originNodeId ? { originNodeId: input.originNodeId } : {}),
+          ...(noOntology ? { experiment: 'no-ontology' } : {})
+        }
+      },
+      () => runAgentLoop({
+        provider,
+        model: agent.model,
+        systemPrompt,
+        messages: [{ role: 'user', content: input.question }],
+        tools: [...builtIn, ...mcp],
+        maxTokens: state.settings?.maxTokens ?? 4096,
+        orgId,
+        sessionId,
+        mcpConfigs,
+        defaultSegmentId: null,
+        onTextDelta: (text) => emit(event, { type: 'text', text }),
+        onToolStart: (tool, explanation) => emit(event, { type: 'tool_start', tool, explanation }),
+        onToolEnd: (tool, success, rowCount, truncated) =>
+          emit(event, { type: 'tool_result', success, rowCount, truncated }),
+        onDone: (reason) => emit(event, { type: 'done', reason })
+      }),
+      (r) => r.textContent
+    )
 
     emit(event, {
       type: 'result',

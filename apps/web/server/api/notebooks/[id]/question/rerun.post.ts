@@ -5,6 +5,7 @@ import { buildSystemPrompt, ensureLayer1Loaded } from '~/server/utils/systemProm
 import { buildOntologyDigest } from '~/server/utils/ontologyDigest'
 import { buildAllTools } from '~/server/utils/toolRegistry'
 import { runAgentLoop } from '~/server/utils/agentLoop'
+import { withAgentTurn, resolveTurnIdentity } from '~/server/utils/pendoTracing'
 import { abortSession } from '~/server/utils/aggregation'
 import {
   compileDsl,
@@ -159,76 +160,101 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  // 1. Replay each stored DSL; repair the ones that fail.
-  const aggregations: ChatAggregation[] = []
-  const unrecoverable: { explanation?: string; error: string }[] = []
-  let repairedCount = 0
-  for (const item of dsls) {
-    const res = await replay(item.dsl)
-    if (res.ok) {
-      aggregations.push({ dsl: item.dsl, rows: res.rows, columns: res.columns, explanation: item.explanation })
-      continue
+  const runRerun = async () => {
+    // 1. Replay each stored DSL; repair the ones that fail.
+    const aggregations: ChatAggregation[] = []
+    const unrecoverable: { explanation?: string; error: string }[] = []
+    let repairedCount = 0
+    for (const item of dsls) {
+      const res = await replay(item.dsl)
+      if (res.ok) {
+        aggregations.push({ dsl: item.dsl, rows: res.rows, columns: res.columns, explanation: item.explanation })
+        continue
+      }
+      // Failed — rethink the DSL.
+      const fixed = await repair(item.dsl, item.explanation, res.error)
+      if (fixed) {
+        repairedCount++
+        // Keep the original label so the UI/answer stays continuous, but adopt
+        // the corrected DSL so the cell heals for next time.
+        aggregations.push({ dsl: fixed.dsl, rows: fixed.rows, columns: fixed.columns, explanation: item.explanation })
+      } else {
+        unrecoverable.push({ explanation: item.explanation, error: res.error })
+      }
     }
-    // Failed — rethink the DSL.
-    const fixed = await repair(item.dsl, item.explanation, res.error)
-    if (fixed) {
-      repairedCount++
-      // Keep the original label so the UI/answer stays continuous, but adopt
-      // the corrected DSL so the cell heals for next time.
-      aggregations.push({ dsl: fixed.dsl, rows: fixed.rows, columns: fixed.columns, explanation: item.explanation })
-    } else {
-      unrecoverable.push({ explanation: item.explanation, error: res.error })
+
+    if (aggregations.length === 0) {
+      throw createError({
+        statusCode: 502,
+        message: `All ${dsls.length} saved quer${dsls.length === 1 ? 'y' : 'ies'} failed to re-run and could not be rebuilt: ${unrecoverable.map(f => f.error).join('; ')}`
+      })
     }
-  }
 
-  if (aggregations.length === 0) {
-    throw createError({
-      statusCode: 502,
-      message: `All ${dsls.length} saved quer${dsls.length === 1 ? 'y' : 'ies'} failed to re-run and could not be rebuilt: ${unrecoverable.map(f => f.error).join('; ')}`
-    })
-  }
+    // 2. Hand the fresh data to the LLM and ask it to reinterpret — no tools, so
+    //    it can't generate new queries. The data above is the single source.
+    const dataBlocks = aggregations.map((a, i) => {
+      const label = a.explanation?.trim() || `Result ${i + 1}`
+      const shown = a.rows.slice(0, MAX_ROWS_FOR_LLM)
+      const more = a.rows.length > MAX_ROWS_FOR_LLM
+        ? `\n(+${a.rows.length - MAX_ROWS_FOR_LLM} more rows not shown)`
+        : ''
+      return `### ${label}\nColumns: ${a.columns.join(', ')}\nRows (${a.rows.length} total):\n${JSON.stringify(shown)}${more}`
+    }).join('\n\n')
 
-  // 2. Hand the fresh data to the LLM and ask it to reinterpret — no tools, so
-  //    it can't generate new queries. The data above is the single source.
-  const dataBlocks = aggregations.map((a, i) => {
-    const label = a.explanation?.trim() || `Result ${i + 1}`
-    const shown = a.rows.slice(0, MAX_ROWS_FOR_LLM)
-    const more = a.rows.length > MAX_ROWS_FOR_LLM
-      ? `\n(+${a.rows.length - MAX_ROWS_FOR_LLM} more rows not shown)`
+    const failureNote = unrecoverable.length
+      ? `\n\nNote: ${unrecoverable.length} saved quer${unrecoverable.length === 1 ? 'y' : 'ies'} could not be re-run or rebuilt this time (${unrecoverable.map(f => f.explanation || 'unnamed').join(', ')}); answer from the data that did return and say so if it matters.`
       : ''
-    return `### ${label}\nColumns: ${a.columns.join(', ')}\nRows (${a.rows.length} total):\n${JSON.stringify(shown)}${more}`
-  }).join('\n\n')
 
-  const failureNote = unrecoverable.length
-    ? `\n\nNote: ${unrecoverable.length} saved quer${unrecoverable.length === 1 ? 'y' : 'ies'} could not be re-run or rebuilt this time (${unrecoverable.map(f => f.explanation || 'unnamed').join(', ')}); answer from the data that did return and say so if it matters.`
-    : ''
+    const userMessage =
+      `Original question:\n${question}\n\n` +
+      `I re-ran the saved queries for this question. Here is the FRESH data:\n\n${dataBlocks}${failureNote}\n\n` +
+      `Reinterpret this latest data and answer the original question. Be concise and specific with the current numbers. ` +
+      `Do not ask to run anything else — the data above is already current and is all you have.`
 
-  const userMessage =
-    `Original question:\n${question}\n\n` +
-    `I re-ran the saved queries for this question. Here is the FRESH data:\n\n${dataBlocks}${failureNote}\n\n` +
-    `Reinterpret this latest data and answer the original question. Be concise and specific with the current numbers. ` +
-    `Do not ask to run anything else — the data above is already current and is all you have.`
+    let answer = ''
+    try {
+      const res = await callLlm({
+        provider,
+        model: agent.model,
+        systemPrompt,
+        messages: [{ role: 'user', content: userMessage }],
+        tools: [],
+        maxTokens,
+        onTextDelta: () => {}
+      })
+      answer = res.textContent
+    } catch (err: any) {
+      throw createError({ statusCode: 500, message: err.message || 'Failed to reinterpret results' })
+    }
 
-  let answer = ''
-  try {
-    const res = await callLlm({
-      provider,
-      model: agent.model,
-      systemPrompt,
-      messages: [{ role: 'user', content: userMessage }],
-      tools: [],
-      maxTokens,
-      onTextDelta: () => {}
-    })
-    answer = res.textContent
-  } catch (err: any) {
-    throw createError({ statusCode: 500, message: err.message || 'Failed to reinterpret results' })
+    return {
+      answer,
+      aggregations,
+      repairedCount,
+      runAt: new Date().toISOString()
+    }
   }
 
-  return {
-    answer,
-    aggregations,
-    repairedCount,
-    runAt: new Date().toISOString()
-  }
+  // Reported to Pendo as one turn whose prompt is the *original* question, not
+  // the internal reinterpretation/repair scaffolding — that's what the user
+  // actually asked. The repair loop's own LLM and tool calls still show up as
+  // trace spans underneath.
+  const identity = resolveTurnIdentity(event, orgId)
+  return withAgentTurn(
+    {
+      orgId,
+      conversationId: `qrerun:${notebookId}:${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      prompt: question,
+      visitorId: identity.visitorId,
+      accountId: identity.accountId,
+      eventProperties: {
+        surface: 'question-cell-rerun',
+        notebookId,
+        savedQueryCount: dsls.length,
+        ...(originConceptId ? { originConceptId } : {})
+      }
+    },
+    runRerun,
+    (r) => r.answer
+  )
 })

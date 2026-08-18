@@ -1,15 +1,18 @@
 import { z } from 'zod'
+import { randomUUID } from 'node:crypto'
 import { getNotebook } from '~/server/utils/notebookStore'
 import { readAdminState } from '~/server/utils/adminStore'
 import { buildSystemPrompt, ensureLayer1Loaded } from '~/server/utils/systemPrompt'
 import { buildOntologyDigest } from '~/server/utils/ontologyDigest'
 import { buildAllTools } from '~/server/utils/toolRegistry'
 import { runAgentLoop } from '~/server/utils/agentLoop'
+import { withAgentTurn, resolveTurnIdentity } from '~/server/utils/pendoTracing'
 import { abortSession } from '~/server/utils/aggregation'
 import { evolveConcepts } from '~/server/utils/conceptEvolution'
 import {
   listChatMessages,
   insertChatMessage,
+  getOrCreateChatConversationId,
   type ChatAggregation
 } from '~/server/utils/chatMessageStore'
 import type { ConversationMessage } from '~/server/utils/llmClient'
@@ -112,24 +115,52 @@ export default defineEventHandler(async (event) => {
   })
   emit(event, { type: 'message_created', message: userMessage })
 
+  // The chat sidebar is the one genuinely multi-turn surface. The conversation
+  // id is stored with the messages (see `chatMessageStore`) rather than derived
+  // from the request's `sessionId`, which the client regenerates on every page
+  // load — so the thread stays one conversation across reloads and only ends
+  // when the user clears the chat.
+  const identity = resolveTurnIdentity(event, orgId)
+  const conversationId = getOrCreateChatConversationId(notebookId)
+  // Minted up front so the answer carries one id everywhere: the chat row, the
+  // message the UI renders, and Pendo's agent_response. `/chat/interaction`
+  // relies on that to attribute a button click to this specific answer.
+  const assistantMessageId = randomUUID()
+
   try {
-    const result = await runAgentLoop({
-      provider,
-      model: agent.model,
-      systemPrompt,
-      messages: [...history],
-      tools: allTools,
-      maxTokens: state.settings?.maxTokens ?? 4096,
-      orgId,
-      sessionId,
-      mcpConfigs,
-      defaultSegmentId: notebook.default_segment_id ?? null,
-      onTextDelta: (text) => emit(event, { type: 'text', text }),
-      onToolStart: (tool, explanation) => emit(event, { type: 'tool_start', tool, explanation }),
-      onToolEnd: (tool, success, rowCount, truncated) =>
-        emit(event, { type: 'tool_result', success, rowCount, truncated }),
-      onDone: (reason) => emit(event, { type: 'done', reason })
-    })
+    const result = await withAgentTurn(
+      {
+        orgId,
+        conversationId,
+        prompt: question,
+        visitorId: identity.visitorId,
+        accountId: identity.accountId,
+        responseMessageId: assistantMessageId,
+        eventProperties: {
+          surface: 'notebook-chat',
+          notebookId,
+          ...(referencedCellIds.length ? { referencedCellCount: referencedCellIds.length } : {})
+        }
+      },
+      () => runAgentLoop({
+        provider,
+        model: agent.model,
+        systemPrompt,
+        messages: [...history],
+        tools: allTools,
+        maxTokens: state.settings?.maxTokens ?? 4096,
+        orgId,
+        sessionId,
+        mcpConfigs,
+        defaultSegmentId: notebook.default_segment_id ?? null,
+        onTextDelta: (text) => emit(event, { type: 'text', text }),
+        onToolStart: (tool, explanation) => emit(event, { type: 'tool_start', tool, explanation }),
+        onToolEnd: (tool, success, rowCount, truncated) =>
+          emit(event, { type: 'tool_result', success, rowCount, truncated }),
+        onDone: (reason) => emit(event, { type: 'done', reason })
+      }),
+      (r) => r.textContent
+    )
 
     sessions.set(sessionId, result.messages)
 
@@ -146,6 +177,7 @@ export default defineEventHandler(async (event) => {
     const primaryDsl = aggregations.length > 0 ? aggregations[0].dsl : null
 
     const assistantMessage = insertChatMessage({
+      id: assistantMessageId,
       notebookId,
       role: 'assistant',
       content: result.textContent,

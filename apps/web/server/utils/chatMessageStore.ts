@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { getDb } from '../db/client'
+import { getDb, dbGetJson, dbSetJson } from '../db/client'
 import type { ChartType } from '~/types/notebook'
 
 export interface ChatAggregation {
@@ -78,11 +78,18 @@ export interface InsertChatMessageInput {
   aggregations?: ChatAggregation[]
   summaryCharts?: ChatSummaryChart[]
   referencedCellIds?: string[]
+  /**
+   * Use this id instead of a fresh one. The agent stream pre-generates the
+   * assistant message's id so the same value identifies the message in the
+   * database, in the UI, and as the Pendo `agent_response` — which is what lets
+   * a later interaction be attributed to this exact answer.
+   */
+  id?: string
 }
 
 export function insertChatMessage(input: InsertChatMessageInput): ChatMessage {
   const db = getDb()
-  const id = randomUUID()
+  const id = input.id ?? randomUUID()
   const now = new Date().toISOString()
   const aggregationsJson = input.aggregations && input.aggregations.length
     ? JSON.stringify(input.aggregations)
@@ -117,4 +124,48 @@ export function insertChatMessage(input: InsertChatMessageInput): ChatMessage {
 export function clearChatMessages(notebookId: string): void {
   const db = getDb()
   db.prepare('DELETE FROM notebook_chat_messages WHERE notebook_id = ?').run(notebookId)
+  // Wiping the history ends the thread, so the analytics conversation ends with
+  // it. Rotated here rather than in the endpoint so the two can never drift:
+  // any future caller that clears a notebook's chat starts a new conversation.
+  rotateChatConversationId(notebookId)
+}
+
+// --- Analytics conversation identity ---------------------------------------
+//
+// The id that groups this notebook's chat turns into a single conversation in
+// Pendo Agent Analytics. It lives in the database beside the messages, not in
+// the browser: the client's `sessionId` is regenerated on every page load, so
+// keying off it would split one continuous chat into a new conversation each
+// time the user reloaded or navigated back to the notebook.
+//
+// Lifetime therefore matches the visible thread — created with the first turn,
+// stable across reloads and across browsers, and retired only when the user
+// clears the chat.
+
+function conversationKey(notebookId: string): string {
+  return `chat_conversation:${notebookId}`
+}
+
+function newConversationId(): string {
+  return `nbchat:${randomUUID()}`
+}
+
+/**
+ * The current analytics conversation id for a notebook's chat, minting one on
+ * first use.
+ */
+export function getOrCreateChatConversationId(notebookId: string): string {
+  const existing = dbGetJson<{ id?: string }>(conversationKey(notebookId), {})
+  if (existing.id) return existing.id
+
+  const id = newConversationId()
+  dbSetJson(conversationKey(notebookId), { id })
+  return id
+}
+
+/** Start a fresh conversation for this notebook's chat. */
+export function rotateChatConversationId(notebookId: string): string {
+  const id = newConversationId()
+  dbSetJson(conversationKey(notebookId), { id })
+  return id
 }

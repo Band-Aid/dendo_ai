@@ -43,6 +43,8 @@ interface EvolvedUpdate {
 }
 
 const question = ref('')
+/** True while an IME conversion is open (Japanese/Chinese/Korean input). */
+const composing = ref(false)
 const running = ref(false)
 const result = ref<AskResult | null>(null)
 const errorMsg = ref('')
@@ -84,6 +86,12 @@ const toolLabels: Record<string, string> = {
 async function run() {
   const q = question.value.trim()
   if (!q || running.value) return
+  // Empty the box on send, like the chat input does. `answeredQuestion` keeps
+  // the text for the save-as-question flow, and the answer renders it above
+  // itself, so nothing is lost by clearing — and the next question can be typed
+  // without deleting the previous one by hand. Restored below if the request
+  // never reaches the agent, so a long question is not thrown away on failure.
+  question.value = ''
   running.value = true
   errorMsg.value = ''
   result.value = null
@@ -149,6 +157,10 @@ async function run() {
     streamText.value = ''
     toolNote.value = ''
     abortController = null
+    // No answer came back — whether the request threw, was aborted, or the
+    // stream reported an error — so put the question back instead of making the
+    // user retype it. Skipped if they have already started typing the next one.
+    if (!result.value && !question.value.trim()) question.value = q
   }
 }
 
@@ -167,6 +179,9 @@ function renderMarkdown(content: string): string {
 
 function onKeydown(e: KeyboardEvent) {
   if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+    // An open IME conversion owns this keystroke — `question` is still the
+    // pre-conversion value until `compositionend`. See AgentInputBar.
+    if (composing.value || e.isComposing || e.keyCode === 229) return
     e.preventDefault()
     run()
   }
@@ -191,6 +206,8 @@ function onKeydown(e: KeyboardEvent) {
         :auto-size="{ minRows: 2, maxRows: 6 }"
         :placeholder="t('ui.ontology.askPlaceholder')"
         @keydown="onKeydown"
+        @compositionstart="composing = true"
+        @compositionend="composing = false"
       />
       <div class="ask-run-row">
         <span class="ask-hint">{{ t('ui.ontology.askHint') }}</span>
@@ -216,6 +233,10 @@ function onKeydown(e: KeyboardEvent) {
       </template>
 
       <template v-if="result">
+        <!-- The input is emptied on send, so the answer carries the question it
+             belongs to — otherwise there is nothing on screen saying what was
+             asked. -->
+        <p v-if="answeredQuestion" class="ask-asked">{{ answeredQuestion }}</p>
         <div class="ask-answer" v-html="renderMarkdown(result.answer)" />
 
         <div v-for="(agg, i) in result.aggregations" :key="i" class="ask-agg">
@@ -293,6 +314,17 @@ function onKeydown(e: KeyboardEvent) {
   color: var(--muted, #8a8577);
   font-size: 13px;
   padding: 8px 0;
+}
+/* The question this answer belongs to, shown because the input clears on send. */
+.ask-asked {
+  margin: 0 0 8px;
+  padding-left: 10px;
+  border-left: 2px solid var(--rule, #e8e2d6);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-2, #4a4a45);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .ask-answer {
   font-size: 13.5px;

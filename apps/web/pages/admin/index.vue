@@ -30,6 +30,21 @@ const pendoForm = ref({
 })
 const pendoStatus = ref({ hasKey: false, endpoint: '', defaultAppId: 0 })
 
+// --- Pendo Agent Analytics -------------------------------------------------
+// Where this app reports its OWN agent conversations — a different destination
+// from the aggregation API above, and previously hardcoded in nuxt.config.
+const pendoAgentForm = ref({
+  enabled: false,
+  apiKey: '',
+  agentId: '',
+  endpoint: '',
+  redact: false,
+  defaultVisitorId: '',
+  defaultAccountId: ''
+})
+/** What the server reports is actually running, which may come from env vars. */
+const pendoAgentStatus = ref({ tracing: false, fromEnvironment: false, effective: null as any })
+
 // General settings state
 const settingsForm = ref({
   maxTokens: 2000
@@ -95,11 +110,12 @@ async function loadAll() {
   loading.value = true
   
   try {
-    const [providersData, pendoData, agentsData, settingsData] = await Promise.all([
+    const [providersData, pendoData, agentsData, settingsData, pendoAgentData] = await Promise.all([
       callApi<any[]>('/api/admin/providers'),
       callApi<any>('/api/admin/pendo'),
       callApi<any[]>('/api/admin/agents'),
-      callApi<any>('/api/admin/settings')
+      callApi<any>('/api/admin/settings'),
+      callApi<any>('/api/admin/pendo-agent')
     ])
     
     providers.value = providersData
@@ -112,6 +128,24 @@ async function loadAll() {
     pendoForm.value.apiEndpoint = pendoData.apiEndpoint || 'https://app.pendo.io/api/v1/aggregation'
     pendoForm.value.defaultAppId = pendoData.defaultAppId || -323232
     settingsForm.value.maxTokens = settingsData.maxTokens ?? 2000
+
+    // With nothing saved, prefill from what's actually in effect (env vars), so
+    // the form shows the destination in use instead of looking unconfigured.
+    pendoAgentStatus.value = {
+      tracing: pendoAgentData.tracing,
+      fromEnvironment: pendoAgentData.fromEnvironment,
+      effective: pendoAgentData.effective
+    }
+    const src = pendoAgentData.saved ?? pendoAgentData.effective ?? {}
+    pendoAgentForm.value = {
+      enabled: src.enabled ?? false,
+      apiKey: src.apiKey ?? '',
+      agentId: src.agentId ?? '',
+      endpoint: src.endpoint ?? '',
+      redact: src.redact ?? false,
+      defaultVisitorId: src.defaultVisitorId ?? '',
+      defaultAccountId: src.defaultAccountId ?? ''
+    }
 
     // Warm model cache for configured providers so modal opens with options ready.
     for (const p of providers.value) {
@@ -210,6 +244,27 @@ async function testPendo() {
     $message.error(err.message || 'Pendo key test failed')
   } finally {
     testingPendo.value = false
+  }
+}
+
+async function savePendoAgent() {
+  saving.value = true
+  try {
+    const res = await callApi<{ tracing: boolean }>('/api/admin/pendo-agent', {
+      method: 'POST',
+      body: JSON.stringify(pendoAgentForm.value)
+    })
+    // Report what the SDK is actually doing now, not just that a row was written.
+    $message.success(
+      res.tracing
+        ? 'Agent Analytics saved — tracing is active'
+        : 'Agent Analytics saved — tracing is off'
+    )
+    await loadAll()
+  } catch (err: any) {
+    $message.error(err.message || 'Failed to save Agent Analytics settings')
+  } finally {
+    saving.value = false
   }
 }
 
@@ -482,6 +537,83 @@ onMounted(loadAll)
                   Test Connection
                 </a-button>
               </a-space>
+            </a-form>
+          </a-card>
+
+          <!-- Agent Analytics reports this app's own agent conversations, which
+               is the opposite direction from the aggregation API above: that one
+               reads your product's data, this one sends yours to Pendo. -->
+          <a-card title="Agent Analytics" style="margin-top: 16px;">
+            <template #extra>
+              <a-tag :color="pendoAgentStatus.tracing ? 'green' : 'default'">
+                {{ pendoAgentStatus.tracing ? 'Reporting' : 'Not reporting' }}
+              </a-tag>
+            </template>
+
+            <a-alert
+              v-if="pendoAgentStatus.fromEnvironment"
+              type="warning"
+              show-icon
+              style="margin-bottom: 16px;"
+              message="Currently using a destination this workspace didn't set"
+              :description="`Nothing is saved here, so the app is falling back to its build-time defaults (app ${pendoAgentStatus.effective?.apiKey || '—'}, agent ${pendoAgentStatus.effective?.agentId || '—'}). Prompts and answers are being exported there. Enter your own values below, or turn the switch off and save to stop reporting.`"
+            />
+
+            <a-form layout="vertical">
+              <a-form-item>
+                <a-switch v-model:checked="pendoAgentForm.enabled" />
+                <span style="margin-left: 8px;">Send agent conversations to Pendo</span>
+                <div class="ant-form-item-extra">
+                  Exports each turn's prompt, answer, LLM generations and tool calls
+                  (content capped at 8,000 characters).
+                </div>
+              </a-form-item>
+
+              <a-form-item
+                label="Public App ID"
+                extra="Pendo → Settings → App Details. Not a secret — the same value a browser Pendo snippet carries."
+              >
+                <a-input
+                  v-model:value="pendoAgentForm.apiKey"
+                  placeholder="00000000-0000-0000-0000-000000000000"
+                />
+              </a-form-item>
+
+              <a-form-item label="Agent ID" extra="Identifies this agent within your Pendo subscription.">
+                <a-input v-model:value="pendoAgentForm.agentId" placeholder="Agent ID from Pendo" />
+              </a-form-item>
+
+              <a-form-item label="Endpoint" extra="Leave blank for https://app.pendo.io">
+                <a-input v-model:value="pendoAgentForm.endpoint" placeholder="https://app.pendo.io" />
+              </a-form-item>
+
+              <a-form-item>
+                <a-switch v-model:checked="pendoAgentForm.redact" />
+                <span style="margin-left: 8px;">Redact emails, phone numbers and SSNs before export</span>
+              </a-form-item>
+
+              <a-collapse ghost style="margin-bottom: 16px;">
+                <a-collapse-panel key="ids" header="Default visitor / account (optional)">
+                  <a-form-item
+                    label="Default Visitor ID"
+                    extra="Used when a turn can't resolve an identity from the request."
+                  >
+                    <a-input v-model:value="pendoAgentForm.defaultVisitorId" placeholder="anonymous" />
+                  </a-form-item>
+                  <a-form-item label="Default Account ID">
+                    <a-input v-model:value="pendoAgentForm.defaultAccountId" placeholder="" />
+                  </a-form-item>
+                </a-collapse-panel>
+              </a-collapse>
+
+              <a-button
+                type="primary"
+                :icon="h(SaveOutlined)"
+                :loading="saving"
+                @click="savePendoAgent"
+              >
+                Save Agent Analytics
+              </a-button>
             </a-form>
           </a-card>
         </a-tab-pane>

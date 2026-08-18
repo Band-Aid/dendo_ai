@@ -19,9 +19,32 @@ import AgentInputBar from './AgentInputBar.vue'
 import ChartRenderer from './ChartRenderer.vue'
 import { inferChartConfig } from '~/composables/useChartInference'
 import { useI18n } from '~/composables/useI18n'
+import { useApi } from '~/composables/useApi'
 import type { ChatMessage, ChatAggregation, ChatSummaryChart, NotebookCell } from '~/types/notebook'
 
 const { t } = useI18n()
+const { apiFetch } = useApi()
+
+/**
+ * Report that the user acted on an agent answer (added it to the notebook,
+ * saved it as a question, …) to Pendo Agent Analytics.
+ *
+ * Fire-and-forget on purpose: this runs alongside the real action, so a slow or
+ * failing analytics call must never delay the click or surface an error to the
+ * user. The message id is the same one the server reported the answer under, so
+ * the interaction attaches to that exact answer.
+ */
+function trackAnswerAction(
+  msg: ChatMessage,
+  action: 'add_note' | 'add_query' | 'save_question' | 'add_aggregation' | 'add_chart',
+  detail?: string
+) {
+  if (!msg?.id || !msg.notebook_id) return
+  apiFetch(`/api/notebooks/${msg.notebook_id}/chat/interaction`, {
+    method: 'POST',
+    body: { messageId: msg.id, action, ...(detail ? { detail } : {}) }
+  }).catch(() => { /* analytics is never worth interrupting the user for */ })
+}
 
 /**
  * Convert an agent-built summary chart spec into the shape `ChartRenderer`
@@ -156,8 +179,24 @@ function refLabel(cellId: string): string {
 
     <template v-else>
     <div class="sidebar-header">
-      <a-tooltip :title="t('ui.chat.collapse')">
+      <!--
+        Every header tooltip is edge-anchored rather than left on Ant's default
+        `top` placement.
+
+        These buttons sit at the right edge of the window, and the popup is
+        portalled to <body>, which has no overflow constraint. A tooltip wider
+        than the gap to the window edge — "Expand chat to fullscreen" easily is —
+        pushed past the viewport, the document grew a scrollbar, and the reflow
+        shifted the button out from under the cursor mid-hover.
+
+        Anchoring to the button's own edge makes the popup grow inward over the
+        notebook instead of outward past the window, so its width can no longer
+        affect layout. Opening downward also stops it covering the app chrome
+        above the header.
+      -->
+      <a-tooltip :title="t('ui.chat.collapse')" placement="bottomLeft">
         <a-button
+          class="header-icon-btn"
           size="small"
           type="text"
           :icon="h(DoubleRightOutlined)"
@@ -166,23 +205,40 @@ function refLabel(cellId: string): string {
       </a-tooltip>
       <span class="sidebar-title">{{ t('ui.chat.title') }}</span>
       <div class="sidebar-header-actions">
-        <a-tooltip :title="fullscreen ? t('ui.chat.exitFullscreen') : t('ui.chat.enterFullscreen')">
+        <a-tooltip
+          :title="fullscreen ? t('ui.chat.exitFullscreen') : t('ui.chat.enterFullscreen')"
+          placement="bottomRight"
+        >
           <a-button
+            class="header-icon-btn"
             size="small"
             type="text"
             :icon="h(fullscreen ? FullscreenExitOutlined : FullscreenOutlined)"
             @click="emit('toggleFullscreen')"
           />
         </a-tooltip>
-        <a-tooltip :title="t('ui.chat.clearTooltip')">
-          <a-button
-            v-if="messages.length"
-            size="small"
-            type="text"
-            :icon="h(CloseCircleOutlined)"
-            @click="emit('clearChat')"
-          />
-        </a-tooltip>
+        <!-- Clearing the chat is destructive and irreversible, so it is kept
+             physically apart from the layout toggles rather than sitting flush
+             against them. -->
+        <span v-if="messages.length" class="header-action-divider" aria-hidden="true" />
+        <a-popconfirm
+          v-if="messages.length"
+          :title="t('ui.chat.clearConfirm')"
+          :ok-text="t('ui.chat.clearConfirmOk')"
+          :cancel-text="t('ui.chat.clearConfirmCancel')"
+          placement="bottomRight"
+          @confirm="emit('clearChat')"
+        >
+          <a-tooltip :title="t('ui.chat.clearTooltip')" placement="bottomRight">
+            <a-button
+              class="header-icon-btn"
+              size="small"
+              type="text"
+              danger
+              :icon="h(CloseCircleOutlined)"
+            />
+          </a-tooltip>
+        </a-popconfirm>
       </div>
     </div>
 
@@ -218,19 +274,19 @@ function refLabel(cellId: string): string {
             <a-button
               size="small"
               :icon="h(PlusOutlined)"
-              @click="emit('addNote', msg.content, questionFor(msg))"
+              @click="emit('addNote', msg.content, questionFor(msg)); trackAnswerAction(msg, 'add_note')"
             >{{ t('ui.chat.actions.addNote') }}</a-button>
             <a-button
               v-if="msg.dsl"
               size="small"
               :icon="h(CodeOutlined)"
-              @click="emit('addQuery', msg.dsl!)"
+              @click="emit('addQuery', msg.dsl!); trackAnswerAction(msg, 'add_query')"
             >{{ t('ui.chat.actions.addQuery') }}</a-button>
             <a-button
               v-if="questionFor(msg)"
               size="small"
               :icon="h(QuestionCircleOutlined)"
-              @click="emit('addQuestion', questionFor(msg)!, msg)"
+              @click="emit('addQuestion', questionFor(msg)!, msg); trackAnswerAction(msg, 'save_question')"
             >{{ t('ui.chat.actions.saveQuestion') }}</a-button>
           </div>
 
@@ -270,20 +326,20 @@ function refLabel(cellId: string): string {
                 <a-button
                   size="small"
                   :icon="h(TableOutlined)"
-                  @click="emit('addAggregation', agg, 'table')"
+                  @click="emit('addAggregation', agg, 'table'); trackAnswerAction(msg, 'add_aggregation', 'table')"
                 >{{ t('ui.chat.actions.addTable') }}</a-button>
                 <a-button
                   v-if="aggChartable(agg)"
                   size="small"
                   :icon="h(BarChartOutlined)"
-                  @click="emit('addAggregation', agg, 'chart')"
+                  @click="emit('addAggregation', agg, 'chart'); trackAnswerAction(msg, 'add_aggregation', 'chart')"
                 >{{ t('ui.chat.actions.addChart') }}</a-button>
                 <a-button
                   v-if="aggChartable(agg)"
                   size="small"
                   type="primary"
                   :icon="h(AppstoreOutlined)"
-                  @click="emit('addAggregation', agg, 'both')"
+                  @click="emit('addAggregation', agg, 'both'); trackAnswerAction(msg, 'add_aggregation', 'both')"
                 >{{ t('ui.chat.actions.addBoth') }}</a-button>
               </div>
             </div>
@@ -320,7 +376,7 @@ function refLabel(cellId: string): string {
                   size="small"
                   type="primary"
                   :icon="h(AppstoreOutlined)"
-                  @click="emit('addAgentSummaryChart', chart)"
+                  @click="emit('addAgentSummaryChart', chart); trackAnswerAction(msg, 'add_chart')"
                 >
                   {{ t('ui.chat.actions.addAgentSummary') }}
                 </a-button>
@@ -457,10 +513,42 @@ function refLabel(cellId: string): string {
   flex-shrink: 0;
   gap: 8px;
 }
+/*
+ * Header controls.
+ *
+ * These are icon-only text buttons: transparent until hovered, so their real
+ * clickable box — which is larger than the glyph inside it — is invisible until
+ * you are already on it. At the old 2px spacing the next button's hit area
+ * began almost immediately after the previous glyph, so aiming just off
+ * "fullscreen" landed on "clear chat" instead, and the hover background
+ * appearing made the control look like it had grown under the cursor.
+ *
+ * The fix is to make the target explicit and predictable: a fixed 28px box per
+ * button, real space between them, and a rule separating the destructive action
+ * from the layout toggles.
+ */
 .sidebar-header-actions {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 6px;
+}
+.sidebar-header :deep(.header-icon-btn) {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* Only the background transitions — never the geometry, so a hovered button
+     can never move or resize the ones beside it. */
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.header-action-divider {
+  width: 1px;
+  height: 16px;
+  background: var(--rule);
+  flex-shrink: 0;
 }
 .sidebar-title {
   font-family: var(--serif);

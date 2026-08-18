@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { execa, type ExecaChildProcess } from 'execa'
 import { readAdminState } from '~/server/utils/adminStore'
 import { getCachedCompile, setCachedCompile } from '~/server/utils/dslCache'
+import { traceToolCall } from '~/server/utils/pendoTracing'
 
 const SUBPROCESS_TIMEOUT_MS = 30_000
 
@@ -147,8 +148,48 @@ export function normalizeDslText(dsl: string): string {
   return out.replace(/\)[ \t]+TIMESERIES\b/, ')\nTIMESERIES')
 }
 
+/**
+ * Compile a DSL query with `aggdsl`, reported to Pendo as an `aggdsl_compile`
+ * tool call nested under whichever agent tool asked for it (normally
+ * `run_pendo_aggregation`).
+ *
+ * The span records what the agent actually handed to `aggdsl` and what came
+ * back: `tool.input` carries the DSL as the agent wrote it plus, when they
+ * differ, the `effectiveDsl` that `aggdsl` really received after normalization
+ * and default-segment injection. `tool.output` carries the compiled Pendo
+ * aggregation body, or the compiler's error message on a failed compile.
+ *
+ * Compiles served from `dslCache` never reach the subprocess, so they are
+ * stamped `aggdsl.from_cache` rather than being reported as a fresh invocation.
+ */
 export async function compileDsl(dsl: string, sessionId?: string, opts: CompileOptions = {}) {
   const effectiveDsl = applyDefaultSegment(normalizeDslText(dsl), opts.defaultSegmentId)
+
+  return traceToolCall(
+    {
+      name: 'aggdsl_compile',
+      input: effectiveDsl === dsl ? { dsl } : { dsl, effectiveDsl }
+    },
+    () => compileDslUntraced(effectiveDsl, sessionId),
+    (res) => ({
+      output: res.success ? res.data : undefined,
+      error: res.success ? undefined : res.error,
+      attributes: { 'aggdsl.from_cache': res.fromCache === true }
+    })
+  )
+}
+
+async function compileDslUntraced(
+  effectiveDsl: string,
+  sessionId?: string
+): Promise<{
+  success: boolean
+  data?: any
+  error?: string
+  cancelled?: boolean
+  fromCache?: boolean
+  effectiveDsl?: string
+}> {
   const cached = getCachedCompile(effectiveDsl)
   if (cached !== null) {
     return { success: true, data: sanitizeSegmentIds(cached), fromCache: true, effectiveDsl }

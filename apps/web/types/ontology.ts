@@ -109,11 +109,44 @@ export interface OntologyBlob {
   concepts: OntologyConcept[]
 }
 
+/**
+ * The window an overlay was computed over, as inclusive `YYYY-MM-DD` calendar
+ * days. Stored alongside the numbers because the window is user-chosen: a
+ * cached blob is only reusable for the range that produced it, and every label
+ * has to say which window the number belongs to.
+ */
+export interface OverlayWindow {
+  from: string
+  to: string
+  /** Inclusive day count — what the DSL asked Pendo for. */
+  days: number
+  /**
+   * True when this came from the rolling default ("last N complete days")
+   * rather than a range the user pinned. The dates are then a *description* of
+   * what Pendo returned, not the cache key — matching them exactly would miss
+   * the cache every time the server's date and the subscription's date differ.
+   */
+  relative?: boolean
+  /**
+   * True when the window runs up to Pendo's current day, whose bucket is still
+   * filling. The numbers are real but not final, and comparing a part-day
+   * against whole days reads as a collapse — so the UI has to say so, and the
+   * cache must not treat the result as settled.
+   */
+  partial?: boolean
+}
+
 /** Computed usage overlay, cached under its own kv key with a TTL. */
 export interface OverlayMetrics {
   fetchedAt: string
+  /**
+   * Window these counts cover. The fields below are deliberately NOT named
+   * `events30d` any more — the range is configurable, so a fixed name in the
+   * data would misdescribe every non-default window.
+   */
+  window: OverlayWindow
   /** Keyed by structural node id (`feature:...` / `page:...`). */
-  metrics: Record<string, { events30d: number; visitors30d: number }>
+  metrics: Record<string, { events: number; visitors: number }>
   /** Per-source failures — a half-populated overlay is still useful. */
   errors?: { features?: string; pages?: string }
 }
