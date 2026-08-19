@@ -538,6 +538,14 @@ const dateLocale = computed(() => (locale.value === 'ja' ? 'ja-JP' : undefined))
   min-height: 100vh;
   position: relative;
   z-index: 1;
+  /* Grid items default to `min-width: auto`, which refuses to shrink below the
+     content's intrinsic minimum. A page whose content has a wide floor — the
+     Product map's detail panel is a fixed 340px beside a graph that has already
+     been laid out at full width — then pushes this `1fr` track past the
+     viewport, and the whole document grows a horizontal scrollbar with the
+     panel hanging off the right edge. Pinning the floor to 0 lets the track
+     stay within its share and makes the content inside do the shrinking. */
+  min-width: 0;
 }
 .app-shell--bare .ms-main { grid-column: 1; }
 
