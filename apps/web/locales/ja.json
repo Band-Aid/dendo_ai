@@ -438,6 +438,7 @@
     },
     "chat": {
       "title": "チャット",
+      "agentPickerTip": "質問に応答するエージェントを選択",
       "clearTooltip": "履歴をクリア",
       "clearConfirm": "このチャット履歴を消去しますか？この操作は取り消せません。",
       "clearConfirmOk": "履歴を消去",

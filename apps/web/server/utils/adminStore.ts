@@ -185,6 +185,28 @@ export async function writeAdminState(next: AdminState, orgId = 'default'): Prom
   }
 }
 
+/**
+ * Which configured agent handles a turn.
+ *
+ * Every question/chat endpoint used to hardcode `enabledAgents[0]`, so a
+ * workspace with several agents configured had no way to actually pick one —
+ * whichever sorted first in `state.agents` silently handled every request.
+ * A caller now names an agent by id; an id that doesn't match an *enabled*
+ * agent falls back to the first enabled one rather than erroring, so a stale
+ * selection (the chosen agent got disabled or deleted) degrades instead of
+ * blocking the turn.
+ */
+export function resolveAgent(enabledAgents: AgentProfile[], requestedId?: string | null): AgentProfile {
+  if (!enabledAgents.length) {
+    throw new Error('No agents configured. Please configure an agent in Admin.')
+  }
+  if (requestedId) {
+    const match = enabledAgents.find(a => a.id === requestedId)
+    if (match) return match
+  }
+  return enabledAgents[0]
+}
+
 export function maskProviderSecrets(provider: ProviderConfig): ProviderConfig {
   const hasApiKey = Boolean(provider.apiKey)
   if (!hasApiKey) return { ...provider, hasApiKey: false }

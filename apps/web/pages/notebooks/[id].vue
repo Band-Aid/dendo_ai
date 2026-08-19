@@ -8,6 +8,7 @@ import { useOrg } from '~/composables/useOrg'
 import { useNotebook } from '~/composables/useNotebook'
 import { useNotebookChat } from '~/composables/useNotebookChat'
 import { useAgentStream } from '~/composables/useAgentStream'
+import { useActiveAgent } from '~/composables/useActiveAgent'
 import { useApi } from '~/composables/useApi'
 import { useI18n } from '~/composables/useI18n'
 import { inferChartConfig } from '~/composables/useChartInference'
@@ -37,6 +38,7 @@ const {
 } = useNotebookChat(() => currentOrgId.value)
 
 const { streaming, streamingText, toolMessage, startStream, abort } = useAgentStream()
+const { enabledAgents, activeAgentId, setActiveAgentId, loadAgents } = useActiveAgent()
 const { apiFetch } = useApi()
 
 const editingTitle = ref(false)
@@ -142,6 +144,7 @@ onBeforeUnmount(() => {
 onMounted(async () => {
   await loadNotebook(notebookId.value)
   await loadMessages(notebookId.value)
+  void loadAgents()
 })
 watch(notebookId, async (id) => {
   await loadNotebook(id)
@@ -298,7 +301,12 @@ async function handleRunQuestion(cellId: string) {
       }>(`/api/notebooks/${notebookId.value}/question/rerun`, {
         method: 'POST',
         headers: { 'x-org-id': currentOrgId.value },
-        body: { question, dsls: storedDsls, originConceptId: meta.originConceptId }
+        body: {
+          question,
+          dsls: storedDsls,
+          originConceptId: meta.originConceptId,
+          ...(activeAgentId.value ? { agentId: activeAgentId.value } : {})
+        }
       })
       await updateCell(notebookId.value, cellId, {
         meta_json: {
@@ -328,7 +336,11 @@ async function handleRunQuestion(cellId: string) {
       }>(`/api/notebooks/${notebookId.value}/question/run`, {
         method: 'POST',
         headers: { 'x-org-id': currentOrgId.value },
-        body: { question, originConceptId: meta.originConceptId }
+        body: {
+          question,
+          originConceptId: meta.originConceptId,
+          ...(activeAgentId.value ? { agentId: activeAgentId.value } : {})
+        }
       })
       await updateCell(notebookId.value, cellId, {
         meta_json: {
@@ -815,6 +827,7 @@ async function handleSend(question: string) {
     question,
     sessionId: sessionId.value,
     referencedCellIds: referenced,
+    agentId: activeAgentId.value,
     onMessageCreated: (msg: ChatMessage) => appendMessage(msg),
     onTextDelta: () => {},
     onDone: (reason) => {
@@ -1169,9 +1182,12 @@ async function handleAddAgentSummaryChart(chart: ChatSummaryChart) {
         :cell-lookup="cellLookup"
         :collapsed="chatCollapsed"
         :fullscreen="chatFullscreen"
+        :agents="enabledAgents"
+        :active-agent-id="activeAgentId"
         @toggle-collapse="toggleChat"
         @toggle-fullscreen="toggleChatFullscreen"
         @send="handleSend"
+        @select-agent="setActiveAgentId"
         @abort="abort"
         @add-note="handleAddNoteToNotebook"
         @add-query="handleAddQueryToNotebook"

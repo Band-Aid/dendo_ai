@@ -1,12 +1,14 @@
 import { z } from 'zod'
 import { getNotebook } from '~/server/utils/notebookStore'
-import { readAdminState } from '~/server/utils/adminStore'
+import { readAdminState, resolveAgent } from '~/server/utils/adminStore'
 import { ensureLayer1Loaded, getLayer1Raw } from '~/server/utils/systemPrompt'
 import { callLlm, type LlmResponse } from '~/server/utils/llmClient'
 
 const schema = z.object({
   prompt: z.string().min(1).max(4000),
-  existingDsl: z.string().optional().default('')
+  existingDsl: z.string().optional().default(''),
+  /** Which configured agent to use; falls back to the first enabled one. */
+  agentId: z.string().optional()
 })
 
 export default defineEventHandler(async (event) => {
@@ -32,7 +34,7 @@ export default defineEventHandler(async (event) => {
   if (!enabledAgents.length) {
     throw createError({ statusCode: 400, message: 'No agents configured.' })
   }
-  const agent = enabledAgents[0]
+  const agent = resolveAgent(enabledAgents, input.agentId)
   const provider = state.providers.find(p => p.provider === agent.provider && p.enabled)
   if (!provider?.apiKey) {
     throw createError({ statusCode: 400, message: `Provider "${agent.provider}" not configured.` })

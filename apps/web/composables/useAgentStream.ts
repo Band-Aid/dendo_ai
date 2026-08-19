@@ -7,6 +7,8 @@ export interface AgentStreamOptions {
   question: string
   sessionId: string
   referencedCellIds?: string[]
+  /** Which configured agent should handle this turn; omit for the default. */
+  agentId?: string | null
   onMessageCreated: (message: ChatMessage) => void
   onTextDelta: (text: string) => void
   onDone: (reason: string) => void
@@ -39,7 +41,8 @@ export function useAgentStream() {
         body: JSON.stringify({
           question: opts.question,
           sessionId: opts.sessionId,
-          referencedCellIds: opts.referencedCellIds ?? []
+          referencedCellIds: opts.referencedCellIds ?? [],
+          ...(opts.agentId ? { agentId: opts.agentId } : {})
         }),
         signal: abortController.signal
       })
