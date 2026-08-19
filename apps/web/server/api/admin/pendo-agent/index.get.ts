@@ -22,6 +22,8 @@ export default defineEventHandler(async (event) => {
 
   return {
     saved: state.pendoAgent ?? null,
+    /** Whether the SDK is actually exporting right now — drives the status badge. */
+    tracing: isPendoTracingEnabled(),
     effective: {
       enabled: effective.enabled,
       apiKey: effective.apiKey,
