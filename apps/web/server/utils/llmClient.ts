@@ -43,8 +43,10 @@ export interface LlmCallOptions {
 
 export interface ConversationMessage {
   role: 'user' | 'assistant' | 'tool_result'
-  content: string | ContentBlock[]
+  content: string | ContentBlock[] | null
   tool_call_id?: string
+  /** OpenAI-protocol tool calls issued by an assistant message (absent for Anthropic, which encodes tool_use as content blocks instead). */
+  tool_calls?: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }>
 }
 
 interface ContentBlock {
@@ -95,7 +97,7 @@ function openAiMessagesToApi(messages: ConversationMessage[]): any[] {
         }
       }
     } else {
-      result.push({ role: m.role, content: m.content })
+      result.push({ role: m.role, content: m.content, ...(m.tool_calls ? { tool_calls: m.tool_calls } : {}) })
     }
   }
   return result
@@ -382,7 +384,40 @@ async function callOpenAi(opts: LlmCallOptions, url: string, apiKey: string, isA
     headers['Authorization'] = `Bearer ${apiKey}`
   }
 
-  const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) })
+  /**
+   * Newer reasoning-family models (o1/o3/o4/gpt-5-thinking and later) reject
+   * request shapes older models accept, and each rejection names a different
+   * fix. Rather than hardcode a model-name whitelist that goes stale the
+   * moment OpenAI ships another family, retry on the *specific documented
+   * error* with the one field it names adjusted — same pattern as
+   * tools/pendo/run_agg.py's rewrite_on_error for the aggregation API. A
+   * single model can need more than one fix (observed live: a model that
+   * required both swaps below), so this loops rather than fixing once.
+   */
+  function patchForKnownIncompatibility(body: any, err: string): any | null {
+    if (err.includes("'max_tokens'") && err.includes('max_completion_tokens')) {
+      const { max_tokens, ...rest } = body
+      return { ...rest, max_completion_tokens: maxTokens }
+    }
+    if (err.includes('reasoning_effort') && (body.tools?.length ?? 0) > 0 && body.reasoning_effort !== 'none') {
+      // "Function tools with reasoning_effort are not supported for <model> in
+      // /v1/chat/completions. To use function tools, ... set reasoning_effort
+      // to 'none'." The app never sets this param itself — the model defaults
+      // to a non-'none' effort server-side whenever tools are present.
+      return { ...body, reasoning_effort: 'none' }
+    }
+    return null
+  }
+
+  let currentBody = body
+  let response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(currentBody) })
+  for (let attempt = 0; !response.ok && response.status === 400 && attempt < 3; attempt++) {
+    const err = await response.text()
+    const patched = patchForKnownIncompatibility(currentBody, err)
+    if (!patched) throw new Error(`OpenAI API error ${response.status}: ${err}`)
+    currentBody = patched
+    response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(currentBody) })
+  }
   if (!response.ok) {
     const err = await response.text()
     throw new Error(`OpenAI API error ${response.status}: ${err}`)
@@ -484,15 +519,18 @@ export function appendToolResults(
     next.push({ role: 'tool_result', content: [{ role: 'user', content: toolResultBlocks }] })
   } else {
     // OpenAI format
-    const assistantMsg: any = { role: 'assistant', content: assistantTurn.textContent || null }
-    if (assistantTurn.toolCalls.length > 0) {
-      assistantMsg.tool_calls = assistantTurn.toolCalls.map(tc => ({
-        id: tc.id,
-        type: 'function',
-        function: { name: tc.name, arguments: JSON.stringify(tc.args) }
-      }))
-    }
-    next.push({ role: 'assistant', content: assistantMsg })
+    const toolCalls = assistantTurn.toolCalls.length > 0
+      ? assistantTurn.toolCalls.map(tc => ({
+          id: tc.id,
+          type: 'function' as const,
+          function: { name: tc.name, arguments: JSON.stringify(tc.args) }
+        }))
+      : undefined
+    next.push({
+      role: 'assistant',
+      content: assistantTurn.textContent || null,
+      ...(toolCalls ? { tool_calls: toolCalls } : {})
+    })
 
     const toolMsgs = toolResults.map(r => ({
       role: 'tool' as const,
