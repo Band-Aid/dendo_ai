@@ -3,7 +3,7 @@
  *
  * Three layers:
  *  1. STRUCTURAL (auto-synced from Pendo, never hand-edited): product areas,
- *     features, pages, segments + `belongs_to` edges. Re-syncable at any time.
+ *     features, pages, track events, segments + `belongs_to` edges. Re-syncable at any time.
  *  2. SEMANTIC (human/agent-authored "concepts"): business definitions with an
  *     optional canonical aggDSL template, links to the entities they measure,
  *     and cause/action playbooks that turn a metric into next questions.
@@ -14,13 +14,13 @@
  * agent and rendering the product map, and it stays maintainable.
  */
 
-export type OntologyEntityKind = 'productArea' | 'feature' | 'page' | 'segment'
+export type OntologyEntityKind = 'productArea' | 'feature' | 'page' | 'trackEvent' | 'segment'
 export type OntologyNodeKind = OntologyEntityKind | 'concept'
 
 /**
  * Structural node. `id` is prefixed and stable across syncs so concept
  * references survive re-sync: `feature:<pendoId>`, `page:<id>`,
- * `area:<groupId>`, `segment:<id>`.
+ * `area:<groupId>`, `trackEvent:<trackTypeId>`, `segment:<id>`.
  */
 export interface OntologyEntityNode {
   id: string
@@ -91,7 +91,7 @@ export interface OntologyStructural {
   syncedAt: string | null
   /** True when a sync hit the per-entity caps. */
   truncated: boolean
-  counts: { productAreas: number; features: number; pages: number; segments: number }
+  counts: { productAreas: number; features: number; pages: number; trackEvents: number; segments: number }
   /**
    * The appId sync actually used. Normally the configured defaultAppId; when
    * that id matches nothing Pendo returned, sync falls back to the dominant
@@ -145,10 +145,10 @@ export interface OverlayMetrics {
    * data would misdescribe every non-default window.
    */
   window: OverlayWindow
-  /** Keyed by structural node id (`feature:...` / `page:...`). */
+  /** Keyed by structural node id (`feature:...` / `page:...` / `trackEvent:...`). */
   metrics: Record<string, { events: number; visitors: number }>
   /** Per-source failures — a half-populated overlay is still useful. */
-  errors?: { features?: string; pages?: string }
+  errors?: { features?: string; pages?: string; trackEvents?: string }
 }
 
 /** Wire shape of GET /api/ontology — graph with derived edges + meta. */

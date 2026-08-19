@@ -50,6 +50,8 @@ export interface CompileOptions {
   /** When set and the DSL doesn't already reference a segment, splice in `| segment id="…"` so all
    * aggregations in the notebook share the default segment filter. */
   defaultSegmentId?: string | null
+  /** Notebook-level account filter, injected unless the DSL already filters accountId. */
+  defaultAccountId?: string | null
 }
 
 /**
@@ -83,6 +85,33 @@ export function applyDefaultSegment(dsl: string, defaultSegmentId?: string | nul
   }
   const injected = `| segment id="${trimmedId}"`
   lines.splice(insertAt, 0, injected)
+  return lines.join('\n')
+}
+
+/** Escape the small string literal surface used by injected filter stages. */
+function escapeDslString(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+}
+
+/**
+ * Apply the notebook account scope to an aggDSL query when it has not already
+ * made an explicit account decision. We deliberately look only at filter
+ * stages: grouping or selecting `accountId` is analysis, not a population
+ * filter, and must not disable the notebook scope.
+ */
+export function applyDefaultAccount(dsl: string, defaultAccountId?: string | null): string {
+  const accountId = defaultAccountId?.trim()
+  if (!accountId) return dsl
+  const alreadyFiltersAccount = /\|\s*filter\b[^\r\n]*\baccountId\b/i.test(dsl)
+    || /"filter"\s*:\s*"[^"\\]*(?:\\.[^"\\]*)*\baccountId\b/i.test(dsl)
+  if (alreadyFiltersAccount) return dsl
+
+  const lines = dsl.split(/\r?\n/)
+  let insertAt = lines.length
+  for (let i = 0; i < lines.length; i++) {
+    if (/^\s*\|/.test(lines[i])) { insertAt = i; break }
+  }
+  lines.splice(insertAt, 0, `| filter accountId == "${escapeDslString(accountId)}"`)
   return lines.join('\n')
 }
 
@@ -163,7 +192,10 @@ export function normalizeDslText(dsl: string): string {
  * stamped `aggdsl.from_cache` rather than being reported as a fresh invocation.
  */
 export async function compileDsl(dsl: string, sessionId?: string, opts: CompileOptions = {}) {
-  const effectiveDsl = applyDefaultSegment(normalizeDslText(dsl), opts.defaultSegmentId)
+  const effectiveDsl = applyDefaultAccount(
+    applyDefaultSegment(normalizeDslText(dsl), opts.defaultSegmentId),
+    opts.defaultAccountId
+  )
 
   return traceToolCall(
     {

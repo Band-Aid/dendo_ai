@@ -14,8 +14,8 @@ export const KPI_HEADLINE_DAYS = 30
 
 /**
  * Canonical daily-usage DSL over a concept's measures. Features win over
- * pages (one source per query); segments are skipped — a segment is a filter,
- * not an event source. Returns null when no feature/page measures exist.
+ * pages, then track events (one source per query); segments are skipped — a segment is a filter,
+ * not an event source. Returns null when no event-source measures exist.
  *
  * Spec constraint: the aggregation API rejects `in [...]` — multi-id filters
  * must be an `||` equality chain. `measures` is schema-capped at 20 ids.
@@ -26,7 +26,7 @@ export function buildMeasuresKpiDsl(
   appId?: number
 ): string | null {
   const pendoIdByNodeId = new Map(nodes.map(n => [n.id, n.pendoId]))
-  const idsFor = (prefix: 'feature' | 'page') =>
+  const idsFor = (prefix: 'feature' | 'page' | 'trackEvent') =>
     measures
       .filter(m => m.startsWith(`${prefix}:`))
       .map(m => pendoIdByNodeId.get(m))
@@ -34,11 +34,12 @@ export function buildMeasuresKpiDsl(
 
   const featureIds = idsFor('feature')
   const pageIds = featureIds.length ? [] : idsFor('page')
-  if (featureIds.length === 0 && pageIds.length === 0) return null
+  const trackEventIds = featureIds.length || pageIds.length ? [] : idsFor('trackEvent')
+  if (featureIds.length === 0 && pageIds.length === 0 && trackEventIds.length === 0) return null
 
-  const source = featureIds.length ? 'featureEvents' : 'pageEvents'
-  const idField = featureIds.length ? 'featureId' : 'pageId'
-  const ids = featureIds.length ? featureIds : pageIds
+  const source = featureIds.length ? 'featureEvents' : pageIds.length ? 'pageEvents' : 'trackEvents'
+  const idField = featureIds.length ? 'featureId' : pageIds.length ? 'pageId' : 'trackTypeId'
+  const ids = featureIds.length ? featureIds : pageIds.length ? pageIds : trackEventIds
   const appParam = appId != null ? `,appId=${appId}` : ''
   const filter = ids.map(id => `${idField} == "${id}"`).join(' || ')
 
@@ -56,7 +57,7 @@ export function buildMeasuresKpiDsl(
   ].join('\n')
 }
 
-const TEMPLATE_ID_RE = /(?:featureId|pageId)\s*==\s*"([^"]+)"/g
+const TEMPLATE_ID_RE = /(?:featureId|pageId|trackTypeId)\s*==\s*"([^"]+)"/g
 const TEMPLATE_APP_ID_RE = /appId=(\d+)/
 
 export interface TemplateSync {
@@ -128,7 +129,7 @@ export function syncKpiDslToMeasures(
   // Only the kind the template actually filters on can be "missing" from it —
   // a featureId template ignoring the concept's pages is the canonical shape,
   // not drift.
-  const kind = tpl.includes('featureId ==') ? 'feature' : 'page'
+  const kind = tpl.includes('featureId ==') ? 'feature' : tpl.includes('pageId ==') ? 'page' : 'trackEvent'
   return {
     derived: false,
     staleIds: [...new Set(refs.filter(p => !measuredPendoIds.has(p)))],

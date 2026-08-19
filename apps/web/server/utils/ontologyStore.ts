@@ -25,7 +25,7 @@ export function emptyOntology(): OntologyBlob {
       edges: [],
       syncedAt: null,
       truncated: false,
-      counts: { productAreas: 0, features: 0, pages: 0, segments: 0 }
+      counts: { productAreas: 0, features: 0, pages: 0, trackEvents: 0, segments: 0 }
     },
     concepts: []
   }
@@ -46,7 +46,7 @@ export function readOntology(orgId: string): OntologyBlob {
       edges: raw.structural?.edges ?? empty.structural.edges,
       syncedAt: raw.structural?.syncedAt ?? null,
       truncated: raw.structural?.truncated ?? false,
-      counts: raw.structural?.counts ?? empty.structural.counts,
+      counts: { ...empty.structural.counts, ...(raw.structural?.counts ?? {}) },
       effectiveAppId: raw.structural?.effectiveAppId,
       appIdMismatch: raw.structural?.appIdMismatch
     },
@@ -125,6 +125,7 @@ export function registerEntities(orgId: string, entities: EntityRegistration[]):
     productAreas: byKind('productArea'),
     features: byKind('feature'),
     pages: byKind('page'),
+    trackEvents: byKind('trackEvent'),
     segments: byKind('segment')
   }
   writeOntology(orgId, blob)

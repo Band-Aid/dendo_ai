@@ -32,6 +32,13 @@ export interface PendoSegment {
   appId?: number
 }
 
+/** A named custom event sent through Pendo's track API (`pendo.track()`). */
+export interface PendoTrackEvent {
+  id: string
+  name: string
+  appId?: number
+}
+
 const PENDO_BASE = 'https://app.pendo.io/api/v1'
 
 /**
@@ -122,6 +129,24 @@ export async function fetchPendoSegments(integrationKey: string): Promise<PendoS
       name: typeof s.name === 'string' && s.name.trim() ? s.name.trim() : String(s.id),
       description: typeof s.description === 'string' ? s.description : undefined,
       appId: s.appId != null ? Number(s.appId) : undefined
+    }))
+}
+
+/**
+ * Pendo exposes the Track Event catalogue at `/tracktype`. Its `id` is the
+ * `trackTypeId` required by the `trackEvents` aggregation source.
+ */
+export async function fetchPendoTrackEvents(
+  integrationKey: string,
+  appId?: number
+): Promise<PendoTrackEvent[]> {
+  const raw = await pendoGet('tracktype', integrationKey, appId)
+  return raw
+    .filter(t => t?.id != null)
+    .map(t => ({
+      id: String(t.id),
+      name: typeof t.name === 'string' && t.name.trim() ? t.name.trim() : String(t.id),
+      appId: t.appId != null ? Number(t.appId) : undefined
     }))
 }
 

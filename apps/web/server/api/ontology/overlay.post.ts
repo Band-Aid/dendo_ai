@@ -104,20 +104,20 @@ function windowFromStartTime(startTime: number, days: number): OverlayWindow {
 }
 
 /**
- * Usage per feature and page over the chosen window — the "paint" on the
- * product map. Runs two canonical aggregations (syntax mirrors
+ * Usage per feature, page, and Track Event over the chosen window — the
+ * "paint" on the product map. Runs canonical aggregations (syntax mirrors
  * examples/feature_events__top10_by_events__last30d__*.dsl) in parallel; a
  * per-source failure degrades that source rather than failing the whole
  * overlay. Cached in kv (survives dev restarts) under its own key, never
  * inside the ontology blob.
  */
 function buildDsl(
-  source: 'featureEvents' | 'pageEvents',
+  source: 'featureEvents' | 'pageEvents' | 'trackEvents',
   appId: number | undefined,
   first: string,
   count: number
 ): string {
-  const idField = source === 'featureEvents' ? 'featureId' : 'pageId'
+  const idField = source === 'featureEvents' ? 'featureId' : source === 'pageEvents' ? 'pageId' : 'trackTypeId'
   const appParam = appId != null ? `,appId=${appId}` : ''
   return [
     `FROM event([source=${source}${appParam},blacklist="apply"])`,
@@ -132,7 +132,7 @@ function buildDsl(
 }
 
 async function runUsage(
-  source: 'featureEvents' | 'pageEvents',
+  source: 'featureEvents' | 'pageEvents' | 'trackEvents',
   orgId: string,
   appId: number | undefined,
   first: string,
@@ -186,9 +186,10 @@ export default defineEventHandler(async (event) => {
   // API rejects (see appIdMismatch handling in ontologyBuilder).
   const appId = readOntology(orgId).structural.effectiveAppId ?? state.pendo?.defaultAppId
 
-  const [features, pages] = await Promise.all([
+  const [features, pages, trackEvents] = await Promise.all([
     runUsage('featureEvents', orgId, appId, first, count),
-    runUsage('pageEvents', orgId, appId, first, count)
+    runUsage('pageEvents', orgId, appId, first, count),
+    runUsage('trackEvents', orgId, appId, first, count)
   ])
 
   const metrics: OverlayMetrics['metrics'] = {}
@@ -212,8 +213,17 @@ export default defineEventHandler(async (event) => {
     errors.pages = pages.error
   }
 
-  if ('error' in features && 'error' in pages) {
-    throw createError({ statusCode: 502, message: `Usage overlay failed: ${features.error}; ${pages.error}` })
+  if ('rows' in trackEvents) {
+    for (const r of trackEvents.rows) {
+      const id = r.trackTypeId != null ? String(r.trackTypeId) : null
+      if (id) metrics[`trackEvent:${id}`] = { events: Number(r.events) || 0, visitors: Number(r.visitors) || 0 }
+    }
+  } else {
+    errors.trackEvents = trackEvents.error
+  }
+
+  if ('error' in features && 'error' in pages && 'error' in trackEvents) {
+    throw createError({ statusCode: 502, message: `Usage overlay failed: ${features.error}; ${pages.error}; ${trackEvents.error}` })
   }
 
   // Correct the provisional label with what Pendo says it actually queried, and
@@ -221,6 +231,7 @@ export default defineEventHandler(async (event) => {
   // the subscription's timezone, which only Pendo's echoed `startTime` reveals.
   const echoed = ('startTime' in features ? features.startTime : undefined)
     ?? ('startTime' in pages ? pages.startTime : undefined)
+    ?? ('startTime' in trackEvents ? trackEvents.startTime : undefined)
 
   let finalWindow: OverlayWindow = window
   if (typeof echoed === 'number') {

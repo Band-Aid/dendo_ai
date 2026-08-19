@@ -103,7 +103,7 @@ export const conceptActionSchema = z.object({
 /** A live-searched Pendo entity the concept editor picked but the synced map
  *  doesn't hold yet — registered as a structural node on save. */
 export const conceptNewEntitySchema = z.object({
-  kind: z.enum(['productArea', 'feature', 'page', 'segment']),
+  kind: z.enum(['productArea', 'feature', 'page', 'trackEvent', 'segment']),
   pendoId: z.string().min(1).max(200),
   name: z.string().min(1).max(300),
   appId: z.number().int().optional(),

@@ -3,7 +3,8 @@ import { readAdminState } from '~/server/utils/adminStore'
 import {
   fetchPendoFeatures,
   fetchPendoPages,
-  fetchPendoSegments
+  fetchPendoSegments,
+  fetchPendoTrackEvents
 } from '~/server/utils/pendoEntities'
 import { readOntology, writeOntology } from '~/server/utils/ontologyStore'
 import type { OntologyBlob, OntologyEdge, OntologyEntityNode, OntologyStructural } from '~/types/ontology'
@@ -11,6 +12,7 @@ import type { OntologyBlob, OntologyEdge, OntologyEntityNode, OntologyStructural
 // Deterministic truncation caps — keep the blob and the graph render bounded.
 const MAX_FEATURES = 300
 const MAX_PAGES = 300
+const MAX_TRACK_EVENTS = 300
 const MAX_SEGMENTS = 100
 
 const byName = <T extends { name: string }>(a: T, b: T) => a.name.localeCompare(b.name)
@@ -36,13 +38,14 @@ export async function syncStructural(orgId: string): Promise<OntologyStructural>
   // configured id first; only if that comes back completely empty (a genuinely
   // wrong id) fall back to unscoped, adopt the dominant appId found, and
   // report the mismatch instead of producing an empty map.
-  let features, pages, segments
+  let features, pages, trackEvents, segments
   let effectiveAppId: number | undefined = defaultAppId ?? undefined
   let appIdMismatch: { configured: number; found: number[] } | undefined
   try {
-    ;[features, pages, segments] = await Promise.all([
+    ;[features, pages, trackEvents, segments] = await Promise.all([
       fetchPendoFeatures(integrationKey, defaultAppId ?? undefined),
       fetchPendoPages(integrationKey, defaultAppId ?? undefined),
+      fetchPendoTrackEvents(integrationKey, defaultAppId ?? undefined),
       fetchPendoSegments(integrationKey)
     ])
 
@@ -62,6 +65,7 @@ export async function syncStructural(orgId: string): Promise<OntologyStructural>
         appIdMismatch = { configured: defaultAppId, found: [...appIdCounts.keys()] }
         features = allFeatures.filter(f => f.appId == null || f.appId === effectiveAppId)
         pages = allPages.filter(p => p.appId == null || p.appId === effectiveAppId)
+        trackEvents = await fetchPendoTrackEvents(integrationKey, effectiveAppId)
       }
     }
   } catch (err: any) {
@@ -81,9 +85,10 @@ export async function syncStructural(orgId: string): Promise<OntologyStructural>
   }
 
   const truncated =
-    features.length > MAX_FEATURES || pages.length > MAX_PAGES || segments.length > MAX_SEGMENTS
+    features.length > MAX_FEATURES || pages.length > MAX_PAGES || trackEvents.length > MAX_TRACK_EVENTS || segments.length > MAX_SEGMENTS
   features = cap(features, MAX_FEATURES, 'feature')
   pages = cap(pages, MAX_PAGES, 'page')
+  trackEvents = cap(trackEvents, MAX_TRACK_EVENTS, 'trackEvent')
   segments = cap(segments, MAX_SEGMENTS, 'segment')
 
   const nodes: OntologyEntityNode[] = []
@@ -114,6 +119,9 @@ export async function syncStructural(orgId: string): Promise<OntologyStructural>
   for (const p of pages) {
     nodes.push({ id: `page:${p.id}`, kind: 'page', pendoId: p.id, name: p.name, appId: p.appId, url: p.url })
   }
+  for (const t of trackEvents) {
+    nodes.push({ id: `trackEvent:${t.id}`, kind: 'trackEvent', pendoId: t.id, name: t.name, appId: t.appId })
+  }
   for (const s of segments) {
     nodes.push({ id: `segment:${s.id}`, kind: 'segment', pendoId: s.id, name: s.name, description: s.description, appId: s.appId })
   }
@@ -127,6 +135,7 @@ export async function syncStructural(orgId: string): Promise<OntologyStructural>
       productAreas: areas.size,
       features: features.length,
       pages: pages.length,
+      trackEvents: trackEvents.length,
       segments: segments.length
     },
     effectiveAppId,

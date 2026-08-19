@@ -13,7 +13,7 @@ import type { ConceptMetric, OntologyEntityNode } from '~/types/ontology'
 const MAX_MATCHES = 20
 const MAX_AREA_FEATURES = 50
 
-export type OntologyLookupKind = 'feature' | 'page' | 'segment' | 'productArea' | 'concept'
+export type OntologyLookupKind = 'feature' | 'page' | 'trackEvent' | 'segment' | 'productArea' | 'concept'
 
 interface EntityMatch {
   type: 'entity'
@@ -150,7 +150,7 @@ export function lookupOntology(
   const result: OntologyLookupResult = { matches: matches.slice(0, MAX_MATCHES), ...base }
   if (result.matches.length === 0) {
     result.note =
-      'No ontology match. The sync is capped and point-in-time — try the live lookup_pendo_features / lookup_pendo_pages / lookup_pendo_segments tools.'
+      'No ontology match. The sync is capped and point-in-time — try the relevant live Pendo lookup tool.'
   } else if (structural.truncated) {
     result.note = 'Note: the ontology sync was truncated — entities beyond the cap exist only via the live lookup_pendo_* tools.'
   }

@@ -39,7 +39,8 @@ export default defineEventHandler(async (event) => {
 
   // 1. Compile with notebook default segment.
   const compiled = await compileDsl(input.dsl, undefined, {
-    defaultSegmentId: notebook.default_segment_id ?? null
+    defaultSegmentId: notebook.default_segment_id ?? null,
+    defaultAccountId: notebook.default_account_id ?? null
   })
   if (!compiled.success) {
     return { success: false, stage: 'compile', error: compiled.error }

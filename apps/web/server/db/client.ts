@@ -142,6 +142,13 @@ function runMigrations(database: any) {
   } catch {
     // Column already exists — ignore
   }
+  // Migration: notebook-level default account ID (like the segment default,
+  // but entered directly because Pendo has no account catalogue endpoint).
+  try {
+    database.exec(`ALTER TABLE workspaces ADD COLUMN default_account_id TEXT`)
+  } catch {
+    // Column already exists — ignore
+  }
 
   // Migration: create notebook_cells table (replaces notebook_cells_json blob)
   try {

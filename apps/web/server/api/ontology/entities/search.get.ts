@@ -4,7 +4,8 @@ import { readOntology, entityNodeId } from '~/server/utils/ontologyStore'
 import {
   fetchPendoFeatures,
   fetchPendoPages,
-  fetchPendoSegments
+  fetchPendoSegments,
+  fetchPendoTrackEvents
 } from '~/server/utils/pendoEntities'
 
 const MAX_PER_KIND = 10
@@ -36,12 +37,13 @@ export default defineEventHandler(async (event) => {
 
   // Segments are subscription-wide (unscoped, same as sync). One failed source
   // degrades the search rather than killing it.
-  const [features, pages, segments] = await Promise.allSettled([
+  const [features, pages, trackEvents, segments] = await Promise.allSettled([
     fetchPendoFeatures(integrationKey, appId),
     fetchPendoPages(integrationKey, appId),
+    fetchPendoTrackEvents(integrationKey, appId),
     fetchPendoSegments(integrationKey)
   ])
-  if (features.status === 'rejected' && pages.status === 'rejected' && segments.status === 'rejected') {
+  if (features.status === 'rejected' && pages.status === 'rejected' && trackEvents.status === 'rejected' && segments.status === 'rejected') {
     throw createError({ statusCode: 502, message: `Pendo entity search failed: ${features.reason?.message}` })
   }
 
@@ -72,6 +74,12 @@ export default defineEventHandler(async (event) => {
       name: p.name,
       url: p.url,
       appId: p.appId
+    })),
+    ...matches(trackEvents).map(t => ({
+      kind: 'trackEvent' as const,
+      pendoId: t.id,
+      name: t.name,
+      appId: t.appId
     }))
   ].map(e => {
     const id = entityNodeId(e.kind, e.pendoId)

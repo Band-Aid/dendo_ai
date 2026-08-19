@@ -12,7 +12,8 @@ const schema = z.object({
   title: z.string().min(1).max(200).optional(),
   description: z.string().max(1000).optional(),
   default_segment_id: trimNullableString(200),
-  default_segment_name: trimNullableString(500)
+  default_segment_name: trimNullableString(500),
+  default_account_id: trimNullableString(500)
 })
 
 export default defineEventHandler(async (event) => {

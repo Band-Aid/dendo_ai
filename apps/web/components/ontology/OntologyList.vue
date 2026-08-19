@@ -121,9 +121,9 @@ function clearFilters() {
   kinds.value = []
 }
 
-// Concepts first, then areas, features, pages, segments — matching the legend
+// Concepts first, then areas, features, pages, track events, segments — matching the legend
 // order — and alphabetical inside each group. Sorting by usage is one click away.
-const KIND_RANK: Record<string, number> = { concept: 0, productArea: 1, feature: 2, page: 3, segment: 4 }
+const KIND_RANK: Record<string, number> = { concept: 0, productArea: 1, feature: 2, page: 3, trackEvent: 4, segment: 5 }
 
 const columns = computed(() => [
   {

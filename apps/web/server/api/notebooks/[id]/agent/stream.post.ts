@@ -87,7 +87,8 @@ export default defineEventHandler(async (event) => {
     customSkills: state.settings?.customSkills,
     ontologyDigest: buildOntologyDigest(orgId) ?? undefined,
     defaultSegmentId: notebook.default_segment_id ?? null,
-    defaultSegmentName: notebook.default_segment_name ?? null
+    defaultSegmentName: notebook.default_segment_name ?? null,
+    defaultAccountId: notebook.default_account_id ?? null
   })
 
   const { builtIn, mcp, mcpConfigs } = await buildAllTools(orgId)
@@ -153,6 +154,7 @@ export default defineEventHandler(async (event) => {
         sessionId,
         mcpConfigs,
         defaultSegmentId: notebook.default_segment_id ?? null,
+        defaultAccountId: notebook.default_account_id ?? null,
         onTextDelta: (text) => emit(event, { type: 'text', text }),
         onToolStart: (tool, explanation) => emit(event, { type: 'tool_start', tool, explanation }),
         onToolEnd: (tool, success, rowCount, truncated) =>
