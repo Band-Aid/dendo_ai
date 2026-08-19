@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { randomUUID } from 'node:crypto'
 import { getNotebook } from '~/server/utils/notebookStore'
-import { readAdminState } from '~/server/utils/adminStore'
+import { readAdminState, resolveAgent } from '~/server/utils/adminStore'
 import { buildSystemPrompt, ensureLayer1Loaded } from '~/server/utils/systemPrompt'
 import { buildOntologyDigest } from '~/server/utils/ontologyDigest'
 import { buildAllTools } from '~/server/utils/toolRegistry'
@@ -20,7 +20,9 @@ import type { ConversationMessage } from '~/server/utils/llmClient'
 const schema = z.object({
   question: z.string().min(1).max(8000),
   referencedCellIds: z.array(z.string()).optional().default([]),
-  sessionId: z.string().default('default')
+  sessionId: z.string().default('default'),
+  /** Which configured agent to use; falls back to the first enabled one. */
+  agentId: z.string().optional()
 })
 
 // In-process LLM message history (keyed by sessionId). The persisted chat
@@ -44,7 +46,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, message: err.message })
   }
 
-  const { question, referencedCellIds, sessionId } = input
+  const { question, referencedCellIds, sessionId, agentId } = input
 
   let notebook: Awaited<ReturnType<typeof getNotebook>>
   try {
@@ -58,7 +60,7 @@ export default defineEventHandler(async (event) => {
   if (!enabledAgents.length) {
     throw createError({ statusCode: 400, message: 'No agents configured. Please configure an agent in Admin.' })
   }
-  const agent = enabledAgents[0]
+  const agent = resolveAgent(enabledAgents, agentId)
 
   const provider = state.providers.find(p => p.provider === agent.provider && p.enabled)
   if (!provider?.apiKey) {

@@ -446,6 +446,7 @@
     },
     "chat": {
       "title": "Chat",
+      "agentPickerTip": "Which configured agent answers your questions",
       "clearTooltip": "Clear chat history",
       "clearConfirm": "Clear this chat history? This can't be undone.",
       "clearConfirmOk": "Clear chat",

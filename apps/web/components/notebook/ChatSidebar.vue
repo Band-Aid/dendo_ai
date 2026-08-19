@@ -69,6 +69,12 @@ interface ReferencedCellSummary {
   label: string
 }
 
+interface AgentOption {
+  id: string
+  name: string
+  enabled: boolean
+}
+
 interface Props {
   messages: ChatMessage[]
   streaming: boolean
@@ -83,6 +89,11 @@ interface Props {
    *  (notebook cells hide). App nav (left sidebar + topbar) stay visible so
    *  the user can still leave the page. */
   fullscreen?: boolean
+  /** Every configured agent (enabled or not) — the picker only renders when
+   *  more than one is enabled, so a single-agent workspace sees nothing new. */
+  agents?: AgentOption[]
+  /** `null` means no explicit choice: the first enabled agent handles the turn. */
+  activeAgentId?: string | null
 }
 
 const props = defineProps<Props>()
@@ -97,10 +108,19 @@ const emit = defineEmits<{
   addAggregation: [agg: ChatAggregation, mode: 'table' | 'chart' | 'both']
   addAgentSummaryChart: [chart: ChatSummaryChart]
   removeReference: [cellId: string]
+  selectAgent: [id: string]
   clearChat: []
   toggleCollapse: []
   toggleFullscreen: []
 }>()
+
+// Only enabled agents are selectable — a disabled one can't handle a turn
+// regardless of what's stored as the active choice.
+const enabledAgentOptions = computed(() =>
+  (props.agents ?? [])
+    .filter(a => a.enabled)
+    .map(a => ({ value: a.id, label: a.name }))
+)
 
 const scrollEl = ref<HTMLElement | null>(null)
 
@@ -205,6 +225,19 @@ function refLabel(cellId: string): string {
       </a-tooltip>
       <span class="sidebar-title">{{ t('ui.chat.title') }}</span>
       <div class="sidebar-header-actions">
+        <!-- Only shown with 2+ enabled agents — one configured agent means
+             there's nothing to choose, same as before this existed. -->
+        <a-tooltip v-if="enabledAgentOptions.length > 1" :title="t('ui.chat.agentPickerTip')" placement="bottomLeft">
+          <a-select
+            :value="activeAgentId ?? enabledAgentOptions[0]?.value"
+            :options="enabledAgentOptions"
+            size="small"
+            class="agent-picker"
+            :disabled="streaming"
+            @change="(v: any) => emit('selectAgent', v)"
+          />
+        </a-tooltip>
+        <span v-if="enabledAgentOptions.length > 1" class="header-action-divider" aria-hidden="true" />
         <a-tooltip
           :title="fullscreen ? t('ui.chat.exitFullscreen') : t('ui.chat.enterFullscreen')"
           placement="bottomRight"
@@ -549,6 +582,13 @@ function refLabel(cellId: string): string {
   height: 16px;
   background: var(--rule);
   flex-shrink: 0;
+}
+.agent-picker {
+  width: 132px;
+  flex-shrink: 0;
+}
+.agent-picker :deep(.ant-select-selector) {
+  font-size: 12px;
 }
 .sidebar-title {
   font-family: var(--serif);

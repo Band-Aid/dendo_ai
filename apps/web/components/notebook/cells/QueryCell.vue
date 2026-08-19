@@ -10,9 +10,11 @@ import {
 import { message } from 'ant-design-vue'
 import { useApi } from '~/composables/useApi'
 import { useI18n } from '~/composables/useI18n'
+import { useActiveAgent } from '~/composables/useActiveAgent'
 import type { QueryCell } from '~/types/notebook'
 
 const { t } = useI18n()
+const { activeAgentId } = useActiveAgent()
 
 interface Props {
   cell: QueryCell
@@ -133,7 +135,11 @@ async function handleGenerate() {
       {
         method: 'POST',
         headers: { 'x-org-id': props.orgId },
-        body: { prompt: text, existingDsl: draft.value }
+        body: {
+          prompt: text,
+          existingDsl: draft.value,
+          ...(activeAgentId.value ? { agentId: activeAgentId.value } : {})
+        }
       }
     )
     if (res?.dsl && looksLikeCleanDsl(res.dsl)) {
