@@ -282,6 +282,7 @@ async function resetMap() {
       message.success(t('ui.ontology.resetDone', {
         features: res.counts.features,
         pages: res.counts.pages,
+        trackEvents: res.counts.trackEvents,
         segments: res.counts.segments
       }))
     } else {
@@ -307,6 +308,7 @@ async function sync() {
     message.success(t('ui.ontology.syncSuccess', {
       features: res.counts.features,
       pages: res.counts.pages,
+      trackEvents: res.counts.trackEvents,
       segments: res.counts.segments
     }))
     await load()
@@ -350,6 +352,35 @@ async function onDeleteConcept(conceptId: string) {
     await load()
   } catch (err: any) {
     message.error(err.message || 'Failed to delete concept')
+  }
+}
+
+/** Remove a concept→measure edge directly from the selected map panel. */
+async function onRemoveMeasure(concept: OntologyConcept, measureId: string) {
+  try {
+    const res = await apiFetch<{ concept: OntologyConcept; dslWarning?: string }>(
+      '/api/ontology/concepts',
+      {
+        method: 'POST',
+        headers: headers(),
+        body: {
+          id: concept.id,
+          name: concept.name,
+          definition: concept.definition,
+          dslTemplate: concept.dslTemplate,
+          kpiColumn: concept.kpiColumn,
+          measures: concept.measures.filter(id => id !== measureId),
+          causes: concept.causes,
+          actions: concept.actions,
+          source: concept.source
+        }
+      }
+    )
+    if (res.dslWarning) message.warning(res.dslWarning)
+    else message.success(t('ui.ontology.measureRemoved'))
+    await onConceptSaved(res.concept)
+  } catch (err: any) {
+    message.error(err.message || 'Failed to remove measure')
   }
 }
 
@@ -542,6 +573,7 @@ onMounted(async () => {
             @toggle-area="toggleArea"
             @edit-concept="openEditConcept"
             @delete-concept="onDeleteConcept"
+            @remove-measure="onRemoveMeasure"
             @ask="handleAsk"
             @close="selectedId = null"
           />

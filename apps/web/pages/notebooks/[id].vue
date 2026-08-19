@@ -247,6 +247,28 @@ async function selectSegment(opt: SegmentOption | null) {
 
 watch(segmentSearch, (q) => loadSegments(q))
 
+// --- Default account picker -------------------------------------------------
+// Account IDs are intentionally typed rather than searched: Pendo's REST API
+// does not expose an account catalogue equivalent to segments.
+const accountPickerOpen = ref(false)
+const accountIdDraft = ref('')
+
+function openAccountPicker() {
+  accountIdDraft.value = current.value?.default_account_id ?? ''
+  accountPickerOpen.value = true
+}
+
+async function selectAccount(accountId: string | null) {
+  const id = accountId?.trim() || null
+  accountPickerOpen.value = false
+  try {
+    await updateNotebook(notebookId.value, { default_account_id: id })
+    message.success(id ? `Account filter set to "${id}"` : 'Account filter cleared')
+  } catch (err: any) {
+    message.error(err.message || 'Failed to update account filter')
+  }
+}
+
 async function handleAddCell(type: 'note' | 'query' | 'question', afterCellId: string | null) {
   try {
     await addCell(notebookId.value, type, '', {}, afterCellId)
@@ -1122,6 +1144,32 @@ async function handleAddAgentSummaryChart(chart: ChatSummaryChart) {
                   <span class="nb-segment-caret">▾</span>
                 </button>
               </a-popover>
+              <span class="nb-meta-dot">·</span>
+              <a-popover
+                v-model:open="accountPickerOpen"
+                trigger="click"
+                placement="bottomLeft"
+              >
+                <template #content>
+                  <div class="nb-account-picker">
+                    <a-input
+                      v-model:value="accountIdDraft"
+                      :placeholder="t('ui.notebook.accountPlaceholder')"
+                      autofocus
+                      @press-enter="selectAccount(accountIdDraft)"
+                    />
+                    <div class="nb-account-actions">
+                      <a-button size="small" @click="selectAccount(null)">{{ t('ui.notebook.clearAccount') }}</a-button>
+                      <a-button size="small" type="primary" @click="selectAccount(accountIdDraft)">{{ t('ui.notebook.setAccount') }}</a-button>
+                    </div>
+                  </div>
+                </template>
+                <button class="nb-segment-chip" @click="openAccountPicker">
+                  <span class="nb-segment-label">{{ t('ui.notebook.account') }}:</span>
+                  <span class="nb-segment-value">{{ current?.default_account_id || t('ui.notebook.allAccounts') }}</span>
+                  <span class="nb-segment-caret">▾</span>
+                </button>
+              </a-popover>
             </div>
           </div>
         </header>
@@ -1378,6 +1426,8 @@ async function handleAddAgentSummaryChart(chart: ChatSummaryChart) {
 .nb-segment-name { font-weight: 500; }
 .nb-segment-desc { color: var(--muted); font-size: 11.5px; margin-top: 2px; }
 .nb-segment-empty { padding: 12px; color: var(--muted); font-size: 12.5px; text-align: center; }
+.nb-account-picker { width: 320px; display: flex; flex-direction: column; gap: 10px; }
+.nb-account-actions { display: flex; justify-content: space-between; gap: 8px; }
 
 .nb-body {
   flex: 1;

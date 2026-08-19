@@ -120,6 +120,8 @@ export interface SystemPromptOptions {
    * asks for a different segment (or explicitly "all visitors / no segment"). */
   defaultSegmentId?: string | null
   defaultSegmentName?: string | null
+  /** Notebook-level account ID applied to generated aggregations by default. */
+  defaultAccountId?: string | null
 }
 
 /**
@@ -218,6 +220,14 @@ export async function buildSystemPrompt(opts: SystemPromptOptions): Promise<stri
       `\nNotebook default segment: ${label}.`,
       `Include \`| segment id="${opts.defaultSegmentId}"\` in every DSL you generate (place it after the source/TIMESERIES header, before grouping). For PIPELINE/PES queries, set \`"segment":{"id":"${opts.defaultSegmentId}"}\` inside the stage payload.`,
       `Override the default segment ONLY when the user explicitly asks for a different segment, "all visitors", "no segment filter", or names another segment in this turn. If you override, briefly note it in your reply.`
+    )
+  }
+
+  if (opts.defaultAccountId) {
+    layer3Parts.push(
+      `\nNotebook default account ID: "${opts.defaultAccountId}".`,
+      `Include \`| filter accountId == "${opts.defaultAccountId}"\` in every DSL you generate (place it after the source/TIMESERIES header, before grouping).`,
+      `Override the default account ONLY when the user explicitly asks for a different account or all accounts; briefly note any override in your reply.`
     )
   }
 

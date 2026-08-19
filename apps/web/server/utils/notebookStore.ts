@@ -47,12 +47,13 @@ function rowToNotebook(r: any): Notebook {
     description: r.description ?? null,
     default_segment_id: trimOrNull(r.default_segment_id),
     default_segment_name: trimOrNull(r.default_segment_name),
+    default_account_id: trimOrNull(r.default_account_id),
     created_at: r.created_at,
     updated_at: r.updated_at
   }
 }
 
-const NOTEBOOK_COLUMNS = 'id, org_id, title, description, default_segment_id, default_segment_name, created_at, updated_at'
+const NOTEBOOK_COLUMNS = 'id, org_id, title, description, default_segment_id, default_segment_name, default_account_id, created_at, updated_at'
 
 export function listNotebooks(orgId: string): Notebook[] {
   const db = getDb()
@@ -75,7 +76,7 @@ export function createNotebook(orgId: string, title: string, description?: strin
      VALUES (?, ?, ?, '', 'revenue', ?, ?, ?)`
   ).run(id, orgId, title, description ?? null, now, now)
 
-  return { id, org_id: orgId, title, description: description ?? null, default_segment_id: null, default_segment_name: null, created_at: now, updated_at: now }
+  return { id, org_id: orgId, title, description: description ?? null, default_segment_id: null, default_segment_name: null, default_account_id: null, created_at: now, updated_at: now }
 }
 
 export function getNotebook(id: string, orgId: string): NotebookWithCells {
@@ -100,6 +101,7 @@ export function updateNotebook(
     description?: string
     default_segment_id?: string | null
     default_segment_name?: string | null
+    default_account_id?: string | null
   }
 ): Notebook {
   const db = getDb()
@@ -112,6 +114,7 @@ export function updateNotebook(
   if (patch.description !== undefined) { sets.push('description = ?'); params.push(patch.description) }
   if (patch.default_segment_id !== undefined) { sets.push('default_segment_id = ?'); params.push(patch.default_segment_id) }
   if (patch.default_segment_name !== undefined) { sets.push('default_segment_name = ?'); params.push(patch.default_segment_name) }
+  if (patch.default_account_id !== undefined) { sets.push('default_account_id = ?'); params.push(patch.default_account_id) }
   params.push(id, orgId)
 
   db.prepare(`UPDATE workspaces SET ${sets.join(', ')} WHERE id = ? AND org_id = ?`).run(...params)

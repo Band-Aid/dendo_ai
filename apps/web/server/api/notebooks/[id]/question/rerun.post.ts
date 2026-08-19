@@ -83,7 +83,8 @@ export default defineEventHandler(async (event) => {
     customSkills: state.settings?.customSkills,
     ontologyDigest: buildOntologyDigest(orgId, originConceptId) ?? undefined,
     defaultSegmentId: notebook.default_segment_id ?? null,
-    defaultSegmentName: notebook.default_segment_name ?? null
+    defaultSegmentName: notebook.default_segment_name ?? null,
+    defaultAccountId: notebook.default_account_id ?? null
   })
 
   // Tools are only built if we actually hit a failure that needs repair —
@@ -104,7 +105,8 @@ export default defineEventHandler(async (event) => {
     | { ok: false; error: string }
   > {
     const compiled = await compileDsl(dsl, undefined, {
-      defaultSegmentId: notebook.default_segment_id ?? null
+      defaultSegmentId: notebook.default_segment_id ?? null,
+      defaultAccountId: notebook.default_account_id ?? null
     })
     if (!compiled.success) return { ok: false, error: `compile: ${compiled.error}` }
     const agg = await runAggregation(JSON.stringify(compiled.data), false, undefined, orgId)
@@ -145,6 +147,7 @@ export default defineEventHandler(async (event) => {
         sessionId,
         mcpConfigs,
         defaultSegmentId: notebook.default_segment_id ?? null,
+        defaultAccountId: notebook.default_account_id ?? null,
         onTextDelta: () => {},
         onToolStart: () => {},
         onToolEnd: () => {},

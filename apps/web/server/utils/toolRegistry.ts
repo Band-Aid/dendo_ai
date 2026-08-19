@@ -1,5 +1,5 @@
 import { compileDsl, runAggregation, enrichWithNames, extractRowsColumns } from '~/server/utils/aggregation'
-import { fetchPendoFeatures, fetchPendoPages } from '~/server/utils/pendoEntities'
+import { fetchPendoFeatures, fetchPendoPages, fetchPendoTrackEvents } from '~/server/utils/pendoEntities'
 import { lookupOntology, type OntologyLookupKind } from '~/server/utils/ontologyLookup'
 import { readAdminState, writeAdminState } from '~/server/utils/adminStore'
 import { loadMcpTools, callMcpTool } from '~/server/utils/mcpClient'
@@ -16,11 +16,11 @@ export function buildBuiltInTools(appId: number): UnifiedTool[] {
         properties: {
           query: {
             type: 'string',
-            description: 'Full or partial name of a feature, page, segment, product area, or concept (case-insensitive). Example: "Agent Mode"'
+            description: 'Full or partial name of a feature, page, track event, segment, product area, or concept (case-insensitive). Example: "Agent Mode"'
           },
           kind: {
             type: 'string',
-            enum: ['feature', 'page', 'segment', 'productArea', 'concept'],
+            enum: ['feature', 'page', 'trackEvent', 'segment', 'productArea', 'concept'],
             description: 'Optional — restrict matches to one kind.'
           }
         },
@@ -64,6 +64,20 @@ export function buildBuiltInTools(appId: number): UnifiedTool[] {
           search_term: {
             type: 'string',
             description: 'Page name or partial name.'
+          }
+        },
+        required: ['search_term']
+      }
+    },
+    {
+      name: 'lookup_pendo_track_events',
+      description: 'Look up Pendo Track Event IDs by name (live Pendo API). Use the returned id as `trackTypeId` with the `trackEvents` aggregation source. Fallback for when the product map has no match.',
+      parameters: {
+        type: 'object',
+        properties: {
+          search_term: {
+            type: 'string',
+            description: 'Track Event name or partial name.'
           }
         },
         required: ['search_term']
@@ -186,6 +200,8 @@ export async function buildAllTools(orgId: string): Promise<{
 export interface ExecuteToolOptions {
   /** Notebook-level default segment to splice into DSL when the agent's tool call doesn't override it. */
   defaultSegmentId?: string | null
+  /** Notebook-level account filter injected into aggregation DSL. */
+  defaultAccountId?: string | null
 }
 
 // Execute a built-in tool
@@ -232,11 +248,23 @@ export async function executeBuiltInTool(
     }
   }
 
+  if (name === 'lookup_pendo_track_events') {
+    try {
+      const trackEvents = await lookupTrackEvents(String(args.search_term ?? ''), orgId)
+      return { result: trackEvents }
+    } catch (err: any) {
+      return { result: null, error: err.message }
+    }
+  }
+
   if (name === 'run_pendo_aggregation') {
     const dsl = String(args.dsl ?? '')
     try {
-      // Compile — apply notebook default segment unless the DSL already specifies one.
-      const compiled = await compileDsl(dsl, sessionId, { defaultSegmentId: opts.defaultSegmentId ?? null })
+      // Compile — apply notebook defaults unless the DSL already specifies one.
+      const compiled = await compileDsl(dsl, sessionId, {
+        defaultSegmentId: opts.defaultSegmentId ?? null,
+        defaultAccountId: opts.defaultAccountId ?? null
+      })
       if (!compiled.success) return { result: null, error: `DSL compile error: ${compiled.error}` }
 
       // Run aggregation
@@ -378,11 +406,21 @@ async function lookupPages(searchTerm: string, orgId: string) {
   return pages.filter(p => p.name.toLowerCase().includes(query))
 }
 
+async function lookupTrackEvents(searchTerm: string, orgId: string) {
+  const state = await readAdminState(orgId)
+  if (!state.pendo?.integrationKey) throw new Error('Pendo integration key not configured. Set it in Admin Settings → Pendo.')
+
+  const trackEvents = await fetchPendoTrackEvents(state.pendo.integrationKey, state.pendo.defaultAppId)
+  const query = searchTerm.toLowerCase()
+  return trackEvents.filter(t => t.name.toLowerCase().includes(query))
+}
+
 const BUILT_IN_NAMES = new Set([
   'lookup_ontology',
   'lookup_pendo_segments',
   'lookup_pendo_features',
   'lookup_pendo_pages',
+  'lookup_pendo_track_events',
   'run_pendo_aggregation',
   'build_summary_chart'
 ])

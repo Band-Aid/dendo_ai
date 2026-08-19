@@ -34,6 +34,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   editConcept: [concept: OntologyConcept]
   deleteConcept: [conceptId: string]
+  /** Remove one structural measure directly from the map detail panel. */
+  removeMeasure: [concept: OntologyConcept, measureId: string]
   /** Ask this question NOW in the map's Ask panel (save-to-notebook comes after). */
   ask: [question: string]
   toggleArea: [areaId: string]
@@ -168,7 +170,16 @@ function entityFallback(): string {
       <div v-if="concept.measures.length" class="ndp-section">
         <span class="ndp-section-label">{{ t('ui.ontology.measures') }}</span>
         <div class="ndp-chips">
-          <span v-for="id in concept.measures" :key="id" class="ndp-chip">{{ nodeName(id) }}</span>
+          <a-popconfirm
+            v-for="id in concept.measures"
+            :key="id"
+            :title="t('ui.ontology.removeMeasureConfirm', { name: nodeName(id) })"
+            @confirm="emit('removeMeasure', concept, id)"
+          >
+            <button type="button" class="ndp-chip ndp-chip--removable">
+              {{ nodeName(id) }} <span aria-hidden="true">×</span>
+            </button>
+          </a-popconfirm>
         </div>
       </div>
 
@@ -342,6 +353,8 @@ function entityFallback(): string {
   border-radius: 999px;
   color: var(--ink-2);
 }
+.ndp-chip--removable { cursor: pointer; font: inherit; }
+.ndp-chip--removable:hover { border-color: var(--accent); color: var(--accent-deep, #8a3422); }
 .ndp-chip--concept { background: var(--accent-soft); color: var(--accent-deep, #8a3422); }
 .ndp-item {
   display: flex;

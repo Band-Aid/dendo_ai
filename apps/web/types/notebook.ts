@@ -213,6 +213,8 @@ export interface Notebook {
   default_segment_id?: string | null
   /** Human-readable name for the default segment, surfaced in UI and the agent prompt. */
   default_segment_name?: string | null
+  /** Account ID applied as a default filter to all notebook aggregations unless explicitly overridden. */
+  default_account_id?: string | null
   created_at: string
   updated_at: string
 }

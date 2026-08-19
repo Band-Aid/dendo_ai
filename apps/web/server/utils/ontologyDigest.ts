@@ -78,7 +78,7 @@ export function buildOntologyDigest(orgId: string, originConceptId?: string): st
     parts.push(
       '',
       `### This question was asked directly from the "${originConcept.name}" concept`,
-      `The user triggered this from a cause, action, or KPI on the "${originConcept.name}" concept in the Product map — it is the subject of the question below, not just a related definition. Use ITS definition, DSL template, and measures right here; they are already resolved to Pendo ids. Do NOT call lookup_ontology / lookup_pendo_segments / lookup_pendo_features / lookup_pendo_pages to re-derive which tags/segments/features this concept cares about — they are already listed below, in full (uncapped). Only fall back to those tools for something this question needs beyond this concept's own measures.`,
+      `The user triggered this from a cause, action, or KPI on the "${originConcept.name}" concept in the Product map — it is the subject of the question below, not just a related definition. Use ITS definition, DSL template, and measures right here; they are already resolved to Pendo ids. Do NOT call lookup_ontology or a live Pendo lookup tool to re-derive which tags, segments, features, pages, or track events this concept cares about — they are already listed below, in full (uncapped). Only fall back to a lookup tool for something this question needs beyond this concept's own measures.`,
       conceptBlock(originConcept, nodeById, FULL_ITEMS)
     )
   }
@@ -103,7 +103,7 @@ export function buildOntologyDigest(orgId: string, originConceptId?: string): st
       .join(', ')
 
     parts.push(
-      `Structural: ${c.productAreas} product areas, ${c.features} features, ${c.pages} pages, ${c.segments} segments.` +
+      `Structural: ${c.productAreas} product areas, ${c.features} features, ${c.pages} pages, ${c.trackEvents ?? 0} track events, ${c.segments} segments.` +
         (topAreas ? ` Top areas by feature count: ${topAreas}.` : '')
     )
   }
@@ -114,7 +114,7 @@ export function buildOntologyDigest(orgId: string, originConceptId?: string): st
     '### How to use this map',
     '- When the question matches a concept by name or meaning, START from its DSL template — adapt only the time window / segment / grouping. Do not re-derive the query from scratch.',
     '- pendoIds listed here are valid directly in aggDSL (e.g. featureId filters) — no lookup round-trip needed.',
-    `- For entities/concepts not listed here, call lookup_ontology first; fall back to lookup_pendo_features/pages/segments only when it has no match (the ontology sync is capped and point-in-time${structural.syncedAt ? `, last synced ${structural.syncedAt}` : ''}).`
+    `- For entities/concepts not listed here, call lookup_ontology first; fall back to the relevant live Pendo lookup tool only when it has no match (the ontology sync is capped and point-in-time${structural.syncedAt ? `, last synced ${structural.syncedAt}` : ''}).`
   ].join('\n')
 
   if (concepts.length === 0) {

@@ -76,7 +76,8 @@ export default defineEventHandler(async (event) => {
     customSkills: state.settings?.customSkills,
     ontologyDigest: buildOntologyDigest(orgId, originConceptId) ?? undefined,
     defaultSegmentId: notebook.default_segment_id ?? null,
-    defaultSegmentName: notebook.default_segment_name ?? null
+    defaultSegmentName: notebook.default_segment_name ?? null,
+    defaultAccountId: notebook.default_account_id ?? null
   })
 
   const { builtIn, mcp, mcpConfigs } = await buildAllTools(orgId)
@@ -115,6 +116,7 @@ export default defineEventHandler(async (event) => {
         sessionId,
         mcpConfigs,
         defaultSegmentId: notebook.default_segment_id ?? null,
+        defaultAccountId: notebook.default_account_id ?? null,
         // Non-streaming endpoint — the callbacks are required by the loop but we
         // only care about the final, structured result here.
         onTextDelta: () => {},

@@ -54,6 +54,7 @@ export function useNotebook(orgId: () => string) {
       description?: string
       default_segment_id?: string | null
       default_segment_name?: string | null
+      default_account_id?: string | null
     }
   ) {
     const updated = await apiFetch(`/api/notebooks/${id}`, {

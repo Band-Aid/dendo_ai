@@ -6,11 +6,11 @@
  * switching views costs the user their bearings. Kept in one place so they
  * can't drift apart.
  */
-export const ONTOLOGY_KINDS = ['productArea', 'feature', 'page', 'segment', 'concept'] as const
+export const ONTOLOGY_KINDS = ['productArea', 'feature', 'page', 'trackEvent', 'segment', 'concept'] as const
 
 export type OntologyKind = (typeof ONTOLOGY_KINDS)[number]
 
-export const KIND_COLORS = ['#A8412B', '#C98A46', '#7A8B5E', '#5E7A8B', '#6B5E8B'] as const
+export const KIND_COLORS = ['#A8412B', '#C98A46', '#7A8B5E', '#5E7A8B', '#427A6B', '#6B5E8B'] as const
 
 export const KIND_INDEX: Record<string, number> = Object.fromEntries(
   ONTOLOGY_KINDS.map((k, i) => [k, i])

@@ -21,6 +21,8 @@ export interface AgentLoopConfig {
   mcpConfigs: McpServerConfig[]
   /** Notebook-level default segment applied to all run_pendo_aggregation calls (unless the DSL overrides). */
   defaultSegmentId?: string | null
+  /** Notebook-level default account applied to all run_pendo_aggregation calls. */
+  defaultAccountId?: string | null
   onTextDelta: (text: string) => void
   onToolStart: (tool: string, explanation?: string) => void
   onToolEnd: (tool: string, success: boolean, rowCount?: number, truncated?: boolean) => void
@@ -58,7 +60,7 @@ function truncateToolResult(result: unknown): { text: string; truncated: boolean
 export async function runAgentLoop(config: AgentLoopConfig): Promise<AgentLoopResult> {
   const {
     provider, model, systemPrompt, tools, maxTokens,
-    orgId, sessionId, mcpConfigs, defaultSegmentId,
+    orgId, sessionId, mcpConfigs, defaultSegmentId, defaultAccountId,
     onTextDelta, onToolStart, onToolEnd, onDone
   } = config
 
@@ -129,7 +131,7 @@ export async function runAgentLoop(config: AgentLoopConfig): Promise<AgentLoopRe
           { name: toolCall.name, input: toolCall.args },
           () => executeTool(
             toolCall.name, toolCall.args, orgId, sessionId, mcpConfigs,
-            { defaultSegmentId: defaultSegmentId ?? null }
+            { defaultSegmentId: defaultSegmentId ?? null, defaultAccountId: defaultAccountId ?? null }
           ),
           (res) => ({ output: res.error ? undefined : res.result, error: res.error })
         )

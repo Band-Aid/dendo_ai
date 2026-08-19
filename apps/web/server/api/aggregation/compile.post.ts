@@ -8,14 +8,16 @@ export default defineEventHandler(async (event) => {
   const parsed = compileSchema.parse(body)
 
   let defaultSegmentId: string | null = null
+  let defaultAccountId: string | null = null
   if (parsed.notebookId) {
     try {
       const nb = getNotebook(parsed.notebookId, orgId)
       defaultSegmentId = nb.default_segment_id ?? null
+      defaultAccountId = nb.default_account_id ?? null
     } catch {
       // Notebook not found / cross-org — fall through with no default segment.
     }
   }
 
-  return await compileDsl(parsed.dsl, undefined, { defaultSegmentId })
+  return await compileDsl(parsed.dsl, undefined, { defaultSegmentId, defaultAccountId })
 })
