@@ -52,9 +52,12 @@ export function nameMatchedEntities(
 export function buildEntityCatalogue(nodes: OntologyEntityNode[]): string {
   const areaNodes = nodes.filter(n => n.kind === 'productArea')
   const areaName = new Map(areaNodes.map(a => [a.id, a.name]))
-  const features = nodes.filter(n => n.kind === 'feature').slice(0, 250)
-  const pages = nodes.filter(n => n.kind === 'page').slice(0, 150)
-  const segments = nodes.filter(n => n.kind === 'segment').slice(0, 80)
+  // Structural sync already bounds the catalogue. Further alphabetical caps
+  // hid tags used in conversations (and previously excluded all track events).
+  const features = nodes.filter(n => n.kind === 'feature')
+  const pages = nodes.filter(n => n.kind === 'page')
+  const segments = nodes.filter(n => n.kind === 'segment')
+  const trackEvents = nodes.filter(n => n.kind === 'trackEvent')
 
   const featuresByArea = new Map<string, string[]>()
   for (const f of features) {
@@ -67,6 +70,7 @@ export function buildEntityCatalogue(nodes: OntologyEntityNode[]): string {
       `### ${areaId === '__none__' ? 'Features (no product area)' : `Product area: ${areaName.get(areaId) ?? areaId}`}\n${lines.join('\n')}`
     ),
     pages.length ? `### Pages\n${pages.map(p => `  ${p.id} — ${p.name}`).join('\n')}` : '',
+    trackEvents.length ? `### Track events\n${trackEvents.map(t => `  ${t.id} — ${t.name}`).join('\n')}` : '',
     segments.length ? `### Segments\n${segments.map(s => `  ${s.id} — ${s.name}`).join('\n')}` : ''
   ].filter(Boolean).join('\n\n')
 }
