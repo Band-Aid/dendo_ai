@@ -15,10 +15,11 @@ import {
   QuestionCircleOutlined
 } from '@ant-design/icons-vue'
 import ChartRenderer from '../ChartRenderer.vue'
-import { inferChartConfig } from '~/composables/useChartInference'
+import ChartControls from '../ChartControls.vue'
+import { aggregationChartKeys, resultChart, summaryChart, summaryChartKeys } from '~/utils/notebookCharts'
 import { useI18n } from '~/composables/useI18n'
 import { formatDateValue, columnLooksLikeDates } from '~/composables/useDateFormat'
-import type { QuestionCell, ChatSummaryChart } from '~/types/notebook'
+import type { QuestionCell, ChatSummaryChart, EmbeddedChartConfig } from '~/types/notebook'
 
 const { t } = useI18n()
 
@@ -35,6 +36,7 @@ const emit = defineEmits<{
   run: []
   /** Reference this question + its data in the chat sidebar. */
   askAbout: []
+  updateChartConfig: [key: string, config: EmbeddedChartConfig]
 }>()
 
 const meta = computed(() => props.cell.meta_json ?? {})
@@ -98,11 +100,13 @@ function aggLabel(agg: { explanation?: string }, idx: number): string {
   return agg.explanation?.trim() || t('ui.question.resultLabel', { n: idx + 1 })
 }
 
-// Per-aggregation table/chart toggle. Keyed by index; defaults to table.
-const chartView = ref<Record<number, boolean>>({})
-function aggChartConfig(agg: { rows: Record<string, unknown>[]; columns: string[] }) {
-  return inferChartConfig(agg.rows, agg.columns)
-}
+const aggKeys = computed(() => aggregationChartKeys(aggregations.value))
+const summaryKeys = computed(() => summaryChartKeys(summaryCharts.value))
+const aggCharts = computed(() => aggregations.value.map((agg, idx) =>
+  resultChart(agg.rows, agg.columns, meta.value.chartConfigs?.[aggKeys.value[idx]])))
+const summaryConfigs = computed(() => summaryCharts.value.map((chart, idx) =>
+  summaryChart(chart, meta.value.chartConfigs?.[summaryKeys.value[idx]])))
+const chartView = computed(() => aggKeys.value.map(key => meta.value.chartConfigs?.[key]?.displayMode === 'chart'))
 
 /** Same date handling as ResultCell's table: epoch-ish columns (by name or
  *  by sampled values) render as short human dates instead of raw millis. */
@@ -151,19 +155,6 @@ async function copyDsl(idx: number, dsl: string) {
   }
 }
 onBeforeUnmount(() => { if (copyTimer) clearTimeout(copyTimer) })
-
-function summaryToRenderer(spec: ChatSummaryChart) {
-  return {
-    series: spec.series.map(s => ({
-      name: s.name,
-      rows: s.points.map(p => ({ label: p.label, value: p.value })),
-      xField: 'label',
-      yField: 'value'
-    })),
-    xField: 'label',
-    yField: 'value'
-  }
-}
 
 // Per-summary-chart source table toggle. Keyed by index; defaults to chart.
 const summarySourceView = ref<Record<number, boolean>>({})
@@ -259,25 +250,28 @@ const runTooltip = computed(() =>
       <!-- Aggregations (possibly several sources combined into one answer) -->
       <div
         v-for="(agg, idx) in aggregations"
-        :key="`agg-${idx}`"
+        :key="aggKeys[idx]"
         class="q-agg"
       >
         <div class="q-agg-head">
           <span class="q-agg-label">{{ aggLabel(agg, idx) }}</span>
           <div class="q-agg-head-right">
             <span class="q-agg-meta mono">{{ t('ui.question.rowsLabel', { n: agg.rows.length }) }}</span>
-            <a-button-group v-if="aggChartConfig(agg)" size="small">
+            <a-button-group v-if="aggCharts[idx]" size="small">
               <a-button
                 :type="!chartView[idx] ? 'primary' : 'default'"
                 :icon="h(TableOutlined)"
-                @click="chartView[idx] = false"
+                :disabled="running"
+                @click="emit('updateChartConfig', aggKeys[idx], { displayMode: 'table' })"
               >{{ t('ui.question.table') }}</a-button>
               <a-button
                 :type="chartView[idx] ? 'primary' : 'default'"
                 :icon="h(BarChartOutlined)"
-                @click="chartView[idx] = true"
+                :disabled="running"
+                @click="emit('updateChartConfig', aggKeys[idx], { displayMode: 'chart' })"
               >{{ t('ui.question.chart') }}</a-button>
             </a-button-group>
+            <ChartControls v-if="chartView[idx] && aggCharts[idx]" :config="aggCharts[idx]!" :disabled="running" @update="emit('updateChartConfig', aggKeys[idx], $event)" />
             <a-tooltip
               v-if="aggDsl(agg)"
               :title="dslView[idx] ? t('ui.question.hideDsl') : t('ui.question.showDsl')"
@@ -307,10 +301,11 @@ const runTooltip = computed(() =>
         </div>
 
         <ChartRenderer
-          v-if="chartView[idx] && aggChartConfig(agg)"
-          :type="aggChartConfig(agg)!.type"
-          :x-field="aggChartConfig(agg)!.xField"
-          :y-field="aggChartConfig(agg)!.yField"
+          v-if="chartView[idx] && aggCharts[idx]"
+          :type="aggCharts[idx]!.chartType"
+          :x-field="aggCharts[idx]!.xField"
+          :y-field="aggCharts[idx]!.yField"
+          :options="aggCharts[idx]!"
           :rows="agg.rows"
           :title="''"
         />
@@ -328,7 +323,7 @@ const runTooltip = computed(() =>
       <!-- Agent-built summary charts -->
       <div
         v-for="(chart, idx) in summaryCharts"
-        :key="`sc-${idx}`"
+        :key="summaryKeys[idx]"
         class="q-summary-chart"
       >
         <div class="q-sc-head">
@@ -336,12 +331,15 @@ const runTooltip = computed(() =>
             <h4 class="q-sc-title">{{ chart.title }}</h4>
             <p v-if="chart.explanation" class="q-sc-explanation">{{ chart.explanation }}</p>
           </div>
+          <div class="q-sc-actions">
+          <ChartControls v-if="!summarySourceView[idx]" :config="summaryConfigs[idx]" :disabled="running" @update="emit('updateChartConfig', summaryKeys[idx], $event)" />
           <a-button
             size="small"
             type="text"
             :icon="h(TableOutlined)"
             @click="summarySourceView[idx] = !summarySourceView[idx]"
           >{{ summarySourceView[idx] ? t('ui.question.hideSource') : t('ui.question.showSource') }}</a-button>
+          </div>
         </div>
         <template v-if="summarySourceView[idx]">
           <a-table
@@ -353,7 +351,7 @@ const runTooltip = computed(() =>
             :rowKey="(_: any, i: number) => String(i)"
           />
         </template>
-        <ChartRenderer v-else :type="chart.chartType" v-bind="summaryToRenderer(chart)" :title="''" />
+        <ChartRenderer v-else :type="summaryConfigs[idx].chartType" :series="summaryConfigs[idx].series" :options="summaryConfigs[idx]" :title="''" />
       </div>
     </div>
 
@@ -469,7 +467,8 @@ const runTooltip = computed(() =>
   background: var(--subtle);
   border-bottom: 1px solid var(--rule);
 }
-.q-agg-head-right { display: flex; align-items: center; gap: 10px; }
+.q-agg-head-right, .q-sc-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.q-agg-head, .q-sc-head { flex-wrap: wrap; }
 .q-agg-label {
   font-family: var(--serif);
   font-weight: 500;

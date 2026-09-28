@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "nuxt dev",
     "build": "nuxt build",
-    "preview": "nuxt preview"
+    "preview": "nuxt preview",
+    "test:reporting": "node --experimental-strip-types tests/reporting.test.ts",
+    "test:reporting:api": "node tests/reporting-api.test.mjs"
   },
   "dependencies": {
     "@ant-design/icons-vue": "^7.0.1",

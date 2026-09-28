@@ -24,7 +24,7 @@ export default defineNuxtConfig({
       }
     }
   },
-  css: ['ant-design-vue/dist/reset.css', '~/assets/css/main.css'],
+  css: ['ant-design-vue/dist/reset.css', '~/assets/css/main.css', '~/assets/css/report.css'],
   nitro: {
     externals: {
       /**

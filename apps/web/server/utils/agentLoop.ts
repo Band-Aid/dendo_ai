@@ -1,3 +1,4 @@
+import type { ChartType } from '~/types/notebook'
 import { callLlm, appendToolResults, type ConversationMessage, type LlmResponse } from '~/server/utils/llmClient'
 import { executeTool } from '~/server/utils/toolRegistry'
 import { traceToolCall } from '~/server/utils/pendoTracing'
@@ -31,7 +32,7 @@ export interface AgentLoopConfig {
 
 export interface SummaryChartSpec {
   title: string
-  chartType: 'bar' | 'line' | 'donut'
+  chartType: ChartType
   xAxisLabel?: string
   yAxisLabel?: string
   series: Array<{ name: string; points: Array<{ label: string; value: number }> }>

@@ -10,10 +10,11 @@ import {
   ThunderboltOutlined
 } from '@ant-design/icons-vue'
 import ChartRenderer from '../ChartRenderer.vue'
-import { inferChartConfig } from '~/composables/useChartInference'
+import ChartControls from '../ChartControls.vue'
+import { resultChart } from '~/utils/notebookCharts'
 import { useI18n } from '~/composables/useI18n'
 import { formatDateValue, isDateLike, columnLooksLikeDates } from '~/composables/useDateFormat'
-import type { ResultCell } from '~/types/notebook'
+import type { ResultCell, EmbeddedChartConfig } from '~/types/notebook'
 
 const { t } = useI18n()
 
@@ -33,6 +34,7 @@ const emit = defineEmits<{
   /** User wants the agent to help modify this query. Page handler references
    *  this cell + uncollapses chat so the user can type the tweak. */
   askToTweak: []
+  updateChartConfig: [config: EmbeddedChartConfig]
 }>()
 
 const storedDsl = computed(() => {
@@ -62,11 +64,14 @@ watch(storedDsl, (next) => {
   if (showDsl.value && !dslDirty.value) dslDraft.value = next
 })
 
-const showChart = ref(false)
+const showChart = computed({
+  get: () => props.cell.meta_json.chartConfig?.displayMode === 'chart',
+  set: value => emit('updateChartConfig', { displayMode: value ? 'chart' : 'table' })
+})
 const meta = computed(() => props.cell.meta_json)
 const rows = computed(() => meta.value?.rows ?? [])
 const columns = computed(() => meta.value?.columns ?? [])
-const chartConfig = computed(() => inferChartConfig(rows.value, columns.value))
+const chartConfig = computed(() => resultChart(rows.value, columns.value, meta.value.chartConfig))
 
 /**
  * Effective display order: respect `meta.columnOrder` when set, drop any
@@ -226,9 +231,10 @@ const tableColumns = computed(() =>
       </div>
       <div class="result-header-actions">
         <a-button-group v-if="chartConfig" size="small">
-          <a-button :type="!showChart ? 'primary' : 'default'" @click="showChart = false" :icon="h(TableOutlined)">{{ t('ui.result.table') }}</a-button>
-          <a-button :type="showChart ? 'primary' : 'default'" @click="showChart = true" :icon="h(BarChartOutlined)">{{ t('ui.result.chart') }}</a-button>
+          <a-button :type="!showChart ? 'primary' : 'default'" :disabled="refreshing" @click="showChart = false" :icon="h(TableOutlined)">{{ t('ui.result.table') }}</a-button>
+          <a-button :type="showChart ? 'primary' : 'default'" :disabled="refreshing" @click="showChart = true" :icon="h(BarChartOutlined)">{{ t('ui.result.chart') }}</a-button>
         </a-button-group>
+        <ChartControls v-if="showChart && chartConfig" :config="chartConfig" :disabled="refreshing" @update="emit('updateChartConfig', $event)" />
 
         <!--
           Column reordering is now driven by dragging the table headers
@@ -309,11 +315,12 @@ const tableColumns = computed(() =>
 
     <ChartRenderer
       v-if="showChart && chartConfig"
-      :type="chartConfig.type"
+      :type="chartConfig.chartType"
       :x-field="chartConfig.xField"
       :y-field="chartConfig.yField"
       :rows="rows"
       :title="chartConfig.title"
+      :options="chartConfig"
     />
 
     <a-table
@@ -323,7 +330,6 @@ const tableColumns = computed(() =>
       :pagination="rows.length > 20 ? { pageSize: 20, size: 'small' } : false"
       size="small"
       :scroll="{ x: true }"
-      row-key="__idx"
       :rowKey="(_: any, idx: number) => String(idx)"
     />
   </div>
@@ -353,6 +359,8 @@ const tableColumns = computed(() =>
 }
 .result-header {
   display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   align-items: center;
   justify-content: space-between;
   padding: 10px 14px;
@@ -372,6 +380,7 @@ const tableColumns = computed(() =>
 }
 .result-header-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
 }

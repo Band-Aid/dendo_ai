@@ -1,3 +1,4 @@
+import type { ChartType } from '~/types/notebook'
 import { compileDsl, runAggregation, enrichWithNames, extractRowsColumns } from '~/server/utils/aggregation'
 import { fetchPendoFeatures, fetchPendoPages, fetchPendoTrackEvents } from '~/server/utils/pendoEntities'
 import { lookupOntology, type OntologyLookupKind } from '~/server/utils/ontologyLookup'
@@ -123,8 +124,8 @@ export function buildBuiltInTools(appId: number): UnifiedTool[] {
           },
           chart_type: {
             type: 'string',
-            enum: ['bar', 'line', 'donut'],
-            description: 'Preferred chart type. Use "bar" or "donut" for categorical comparisons (one point per series), "line" for time-series.'
+            enum: ['bar', 'horizontal-bar', 'stacked-bar', 'line', 'area', 'donut', 'pie', 'heatmap', 'funnel', 'metric'],
+            description: 'Use bar/horizontal-bar for comparisons, line/area for trends, stacked-bar for additive parts, pie/donut for non-negative proportions, heatmap for a comparison matrix, funnel for ordered stages, metric for KPI totals. Never sum rates into a KPI.'
           },
           x_axis_label: {
             type: 'string',
@@ -305,7 +306,7 @@ export async function executeBuiltInTool(
 
 interface SummaryChartSpec {
   title: string
-  chartType: 'bar' | 'line' | 'donut'
+  chartType: ChartType
   xAxisLabel?: string
   yAxisLabel?: string
   series: Array<{ name: string; points: Array<{ label: string; value: number }> }>
@@ -320,8 +321,8 @@ function validateSummaryChartArgs(args: Record<string, unknown>):
   if (!title) return { ok: false, error: 'title is required' }
 
   const chartType = args.chart_type
-  if (chartType !== 'bar' && chartType !== 'line' && chartType !== 'donut') {
-    return { ok: false, error: 'chart_type must be one of: bar, line, donut' }
+  if (typeof chartType !== 'string' || !['bar', 'horizontal-bar', 'stacked-bar', 'line', 'area', 'donut', 'pie', 'heatmap', 'funnel', 'metric'].includes(chartType)) {
+    return { ok: false, error: 'Unsupported chart_type. Choose a visualization listed in the tool schema.' }
   }
 
   if (!Array.isArray(args.series) || args.series.length === 0) {
@@ -351,7 +352,7 @@ function validateSummaryChartArgs(args: Record<string, unknown>):
     ok: true,
     spec: {
       title,
-      chartType,
+      chartType: chartType as ChartType,
       xAxisLabel: typeof args.x_axis_label === 'string' ? args.x_axis_label : undefined,
       yAxisLabel: typeof args.y_axis_label === 'string' ? args.y_axis_label : undefined,
       series,

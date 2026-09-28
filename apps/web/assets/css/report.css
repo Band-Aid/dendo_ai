@@ -1,0 +1,63 @@
+.report-document { --report-accent: #A8412B; max-width: 1120px; width: 100%; margin: 0 auto; padding: 54px 56px 28px; background: #fff; color: #242521; font: 14px/1.65 'IBM Plex Sans', system-ui, sans-serif; border: 1px solid #E8E2D6; box-shadow: 0 8px 40px #35251008; }
+.report-cover { border-top: 4px solid var(--report-accent); padding-top: 18px; margin-bottom: 32px; }
+.report-kicker { display: flex; justify-content: space-between; gap: 16px; color: var(--report-accent); font-size: 10px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; }
+.report-cover h1 { font-family: 'Newsreader', Georgia, serif; font-size: clamp(32px, 4vw, 52px); line-height: 1.08; letter-spacing: -.035em; font-weight: 500; margin: 26px 0 14px; overflow-wrap: anywhere; }
+.report-subtitle { font-size: 17px; color: #68665F; max-width: 740px; margin: 0 0 20px; }
+.report-byline { display: flex; flex-wrap: wrap; gap: 8px 22px; color: #79766E; font-size: 11px; }
+.report-summary { background: #F8F5EF; border-left: 3px solid var(--report-accent); padding: 22px 26px; margin: 0 0 32px; }
+.report-eyebrow { color: var(--report-accent); display: block; font-size: 10px; text-transform: uppercase; letter-spacing: .12em; font-weight: 600; margin-bottom: 12px; }
+.report-prose { overflow-wrap: anywhere; }
+.report-prose p { margin: 0 0 12px; }
+.report-prose > :last-child { margin-bottom: 0; }
+.report-prose h1, .report-prose h2, .report-prose h3 { line-height: 1.25; font-weight: 600; margin: 18px 0 10px; font-family: inherit; font-size: 18px; }
+.report-prose ul, .report-prose ol { padding-left: 22px; margin: 8px 0; }
+.report-prose a { color: #A8412B; text-decoration: underline; }
+.report-prose pre { white-space: pre-wrap; background: #F8F5EF; padding: 14px; }
+.report-prose blockquote { border-left: 2px solid #D0C8B8; padding-left: 16px; margin-left: 0; color: #68665F; }
+.report-prose table { border-collapse: collapse; display: block; overflow-x: auto; }
+.report-prose th, .report-prose td { padding: 8px; border: 1px solid #E8E2D6; }
+.report-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 24px; align-items: start; }
+.report-document .visualization div { max-width: 100%; }
+.report-document .visualization svg { max-width: 100%; height: auto; }
+.report-block { min-width: 0; position: relative; break-inside: avoid; }
+.report-span-full { grid-column: span 6; }
+.report-span-half { grid-column: span 3; }
+.report-span-third { grid-column: span 2; }
+.report-block h2 { font-family: 'Newsreader', Georgia, serif; font-size: 23px; letter-spacing: -.015em; line-height: 1.22; font-weight: 500; margin: 0 0 16px; overflow-wrap: anywhere; }
+.report-block-chart, .report-block-table { border: 1px solid #E8E2D6; border-radius: 5px; padding: 20px; }
+.report-block-heading { border-bottom: 1px solid #D0C8B8; padding: 18px 0 0; }
+.report-block-heading h2 { font-size: 28px; }
+.report-caption { font-size: 12px; color: #595850; margin: 14px 0 0; }
+.report-source { color: #8A867E; font-size: 10px; margin: 14px 0 0; }
+.report-table-scroll { overflow: auto; max-height: 420px; }
+.report-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.report-table th { text-align: left; background: #F8F5EF; color: #68665F; font-weight: 500; position: sticky; top: 0; }
+.report-table td, .report-table th { padding: 10px 12px; border-bottom: 1px solid #EFEADB; white-space: nowrap; }
+.report-table td { font-variant-numeric: tabular-nums; }
+.report-next { margin-top: 36px; padding-top: 24px; border-top: 2px solid #242521; }
+.report-footer { display: flex; justify-content: space-between; gap: 20px; border-top: 1px solid #E8E2D6; padding-top: 20px; margin-top: 40px; color: #8A867E; font-size: 10px; }
+.report-dashboard .report-cover h1 { font-family: inherit; font-size: 36px; font-weight: 600; }
+.report-dashboard { --report-accent: #245D80; }
+.report-dashboard .report-grid { gap: 16px; }
+.report-readout { --report-accent: #32664C; }
+.report-empty { padding: 70px 24px; text-align: center; border: 1px dashed #D0C8B8; color: #79766E; }
+.report-empty span { font-family: Georgia, serif; color: #3C3A35; font-size: 23px; }
+.report-empty p { margin: 14px 0 0; }
+.report-missing { padding: 20px; background: #F4DED9; color: #8B2F2F; }
+.report-editing .report-block { cursor: pointer; outline-offset: 4px; }
+.report-editing .report-block:hover { outline: 1px dashed #C2B3A0; }
+.report-editing .report-block-selected { outline: 2px solid #A8412B; }
+.report-edit-hint { display: none; position: absolute; top: -14px; right: 0; background: #A8412B; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 10px; z-index: 2; }
+.report-block-selected .report-edit-hint { display: block; }
+@media(max-width: 800px) { .report-document { padding: 28px 22px; } .report-span-half, .report-span-third { grid-column: span 6; } .report-cover h1 { font-size: 34px; } }
+@media print {
+  @page { size: A4; margin: 14mm; }
+  html, body, #__nuxt, .app-shell, .ms-main, .ms-content { display: block !important; height: auto !important; min-height: 0 !important; overflow: visible !important; background: white !important; padding: 0 !important; margin: 0 !important; }
+  .ant-modal-root, .ant-message, .ms-sidebar, .ms-topbar, .report-controls, .report-inspector, .report-builder-toolbar, .report-edit-hint, [data-export-remove] { display: none !important; }
+  .report-builder, .report-workspace, .report-preview, .report-reader { display: block !important; overflow: visible !important; height: auto !important; padding: 0 !important; }
+  .report-document { padding: 0; max-width: none; border: 0; box-shadow: none; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .report-span-half { grid-column: span 3; } .report-span-third { grid-column: span 2; }
+  .report-block { outline: none !important; } .report-block-table { break-inside: auto; }
+  .report-table-scroll { max-height: none; overflow: visible; } .report-table td, .report-table th { white-space: normal; overflow-wrap: anywhere; }
+  .report-table th { position: static; } .report-table thead { display: table-header-group; } .report-table tr { break-inside: avoid; }
+}
