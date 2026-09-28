@@ -12,8 +12,12 @@ import { useActiveAgent } from '~/composables/useActiveAgent'
 import { useApi } from '~/composables/useApi'
 import { useI18n } from '~/composables/useI18n'
 import { inferChartConfig } from '~/composables/useChartInference'
+import { chartPresentation } from '~/utils/notebookCharts'
 import type {
   NotebookCell,
+  ChartType,
+  ChartCellMeta,
+  EmbeddedChartConfig,
   ChatAggregation,
   ChatMessage,
   ChatSummaryChart,
@@ -290,6 +294,7 @@ async function handleAddCell(type: 'note' | 'query' | 'question', afterCellId: s
  * pulls stays reproducible run-to-run; only the narrative is regenerated.
  */
 async function handleRunQuestion(cellId: string) {
+  await chartConfigSaves.get(cellId)
   if (runningCellId.value) return
   const cell = cellLookup.value[cellId]
   if (!cell || cell.cell_type !== 'question') return
@@ -446,6 +451,8 @@ function findPairedResultCell(queryCellId: string, dsl?: string): NotebookCell |
 async function handleRunQuery(cellId: string, dsl: string) {
   if (runningCellId.value) return
   runningCellId.value = cellId
+  const pairedForSave = findPairedResultCell(cellId, dsl)
+  if (pairedForSave) await chartConfigSaves.get(pairedForSave.id)
   const queryMeta = (cellLookup.value[cellId]?.meta_json ?? {}) as QueryCellMeta
   try {
     // One endpoint, same pipeline the chat agent uses: compile (with notebook
@@ -688,6 +695,7 @@ async function handleReorderResultColumns(cellId: string, order: string[]) {
 }
 
 async function handleRefreshResult(cellId: string) {
+  await chartConfigSaves.get(cellId)
   const cell = cellLookup.value[cellId]
   if (!cell || cell.cell_type !== 'result') return
   if (refreshingResultIds.value.includes(cellId)) return
@@ -807,7 +815,35 @@ function handleAskChartTweak(cellId: string) {
   }
 }
 
-async function handleChangeChartType(cellId: string, type: 'line' | 'bar' | 'donut') {
+async function handleUpdateChartConfig(cellId: string, config: Partial<ChartCellMeta>) {
+  const cell = cellLookup.value[cellId]
+  if (!cell || cell.cell_type !== 'chart') return
+  try { await updateCell(notebookId.value, cellId, { meta_json: { ...cell.meta_json, ...config } }) }
+  catch (err: any) { message.error(err.message) }
+}
+
+// Serialize edits per cell so changing two charts in one saved question
+// preserves both settings when the requests finish at different times.
+const chartConfigSaves = new Map<string, Promise<void>>()
+function handleUpdateEmbeddedChart(cellId: string, key: string, config: EmbeddedChartConfig) {
+  const currentCell = cellLookup.value[cellId]
+  if (runningCellId.value === cellId || refreshingResultIds.value.includes(cellId) ||
+    (!!runningCellId.value && currentCell?.source_cell_id === runningCellId.value)) return
+  const save = (chartConfigSaves.get(cellId) || Promise.resolve()).then(async () => {
+    const cell = cellLookup.value[cellId]
+    if (!cell || (cell.cell_type !== 'result' && cell.cell_type !== 'question')) return
+    const settings = chartPresentation(config)
+    const meta = cell.cell_type === 'result'
+      ? { ...cell.meta_json, chartConfig: { ...cell.meta_json.chartConfig, ...settings } }
+      : { ...cell.meta_json, chartConfigs: { ...cell.meta_json.chartConfigs, [key]: { ...cell.meta_json.chartConfigs?.[key], ...settings } } }
+    try { await updateCell(notebookId.value, cellId, { meta_json: meta }) }
+    catch (err: any) { message.error(err.message || 'Could not save chart settings') }
+  })
+  chartConfigSaves.set(cellId, save)
+  void save.finally(() => { if (chartConfigSaves.get(cellId) === save) chartConfigSaves.delete(cellId) })
+}
+
+async function handleChangeChartType(cellId: string, type: ChartType) {
   const cell = cellLookup.value[cellId]
   if (!cell || cell.cell_type !== 'chart') return
   try {
@@ -1073,6 +1109,7 @@ async function handleAddAgentSummaryChart(chart: ChatSummaryChart) {
         v-show="!(chatFullscreen && !chatCollapsed)"
         class="notebook-main"
       >
+        <div class="notebook-mode-bar"><span>Notebook</span><NuxtLink :to="`/notebooks/${notebookId}/report`">Build report ↗</NuxtLink></div>
         <a-tooltip v-if="headerCollapsed" title="Show header">
           <button
             class="nb-header-show-fab"
@@ -1206,6 +1243,8 @@ async function handleAddAgentSummaryChart(chart: ChatSummaryChart) {
               @run-question="handleRunQuestion"
               @move-cell="handleMoveCell"
               @ask-about-cell="handleAskAboutCell"
+              @update-chart-config="handleUpdateChartConfig"
+              @update-embedded-chart="handleUpdateEmbeddedChart"
               @change-chart-type="handleChangeChartType"
               @refresh-chart="handleRefreshChart"
               @refresh-result="handleRefreshResult"
@@ -1250,6 +1289,9 @@ async function handleAddAgentSummaryChart(chart: ChatSummaryChart) {
 </template>
 
 <style scoped>
+.notebook-mode-bar { display: flex; justify-content: space-between; padding: 10px 28px; border-bottom: 1px solid var(--rule); font-size: 13px; flex-shrink: 0; }
+.notebook-mode-bar span { font-weight: 600; }
+.notebook-mode-bar a { color: var(--accent); font-weight: 600; }
 .notebook-view {
   display: flex;
   flex-direction: row;

@@ -138,6 +138,39 @@ Agent-built **summary charts** in question cells include a **Show source** toggl
 
 Tables inside question cells render **readable dates** and resolve Pendo ids to **real page and feature names**, so a saved answer stays legible without cross-referencing anything.
 
+### Reports for sharing
+
+Choose **Build report** from a notebook to open **Report studio**. Exploration stays in the notebook; the report has its own title, summary, audience, reporting period, and decisions or next steps.
+
+- Start with an **Executive brief**, **Team readout**, or **Dashboard** format. The readout uses full-width visualizations; briefs and dashboards arrange charts side by side. Each block can also use full, half, or one-third width.
+- Add selected notes, insights, result tables, charts, or the individual answers, tables, and summary charts from saved questions. Add your own section headings and written findings, then reorder, duplicate, or remove blocks independently of the notebook.
+- Turn a table into a visualization, choose fields and grouping, set an aggregation, format numbers or percentages, and add captions. Report settings do not change notebook chart settings. **Refresh notebook data** updates the draft from the latest saved sources without discarding report edits.
+- **Preview** shows the reader experience. **Save** persists the draft; conflicting saves from another tab are rejected so one edit does not silently overwrite another.
+- **Share & export → Publish & create link** publishes a read-only snapshot. Anyone with the link can read it without selecting a workspace. Only selected report content is included: query DSL and unused chart fields are omitted, and tables include only their selected columns. Notebook changes remain separate until **Update published snapshot** is used.
+- **Revoke** disables the link. Publishing again creates a new link; deleting the notebook also removes its published report. Revocation cannot recall downloaded files.
+- **Download HTML** produces a standalone document with embedded SVG charts and no script or service dependency. **Print / Save PDF** uses the browser print dialog. Exports from the editor use the current draft; exports from a shared link use the published snapshot.
+
+Source timestamps remain visible in the report. Deleted sources, missing selected fields, or unsuitable chart data are flagged and block publication until corrected. Report prose supports Markdown, with raw HTML escaped and unsafe links disabled.
+
+Example screens with synthetic data: [Report studio](docs/screenshots/report-studio.png) · [Shared report](docs/screenshots/shared-report.png).
+
+### Visualization controls
+
+Notebook chart cells, result charts, and charts inside saved questions offer **Customize**, including previously saved charts. For result tables, select **Chart** first. Chart settings persist across reloads and data refreshes; each chart in a saved question has its own settings. Report chart blocks offer the same controls. Available views are column, horizontal bar, stacked column, line, area, donut, pie, scatter, heatmap, funnel, and KPI card. Multiple value fields or a **Split by** field support series comparisons; KPI cards support an optional target. Color palettes, labels, legends, sorting, axis labels, precision, currency, and percent formatting are configurable.
+
+Repeated categories use the selected aggregation (sum, average, minimum, maximum, or last non-empty value). Missing observations stay missing, and line charts leave gaps. Percentage formatting expects fractions (`0.25` displays as `25%`). Scatter plots require two numeric axes, and pie, donut, and funnel charts require non-negative values. Funnels preserve source order.
+
+Reporting checks (use the Node version in `.nvmrc`):
+
+```bash
+cd apps/web
+npm run test:reporting
+npm run build
+npm run test:reporting:api
+```
+
+The API tests launch the production build with a temporary SQLite database and cover saving, workspace scoping, conflict detection, selected-data publication, snapshot updates, revocation, deletion, and invalid source data.
+
 ### From chat to notebook
 
 Every agent answer carries action buttons: **Add text**, **Add DSL as query**, **Add table**, **Add chart**, **Add both**, or **Save as question**. Nothing lands in the notebook until you say so.
@@ -250,6 +283,9 @@ A Nuxt 3 web app (`apps/web`) over a Python aggregation toolchain (`src/`, `tool
 
 **Notebooks & cells**
 - `/api/notebooks` · `/api/notebooks/[id]` — CRUD
+- `/api/notebooks/[id]/report` — report draft GET / PUT
+- `/api/notebooks/[id]/report/publish` · `/report/share` — publish snapshot / revoke link
+- `/api/reports/[token]` — read-only published snapshot
 - `/api/notebooks/[id]/cells` — cell management
 - `/api/notebooks/[id]/run-query` — execute a cell's DSL (compile → run → enrich → flatten)
 

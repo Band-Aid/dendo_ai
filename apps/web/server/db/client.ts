@@ -79,6 +79,15 @@ function runMigrations(database: any) {
 
     CREATE INDEX IF NOT EXISTS idx_workspace_timeline_workspace ON workspace_timeline(workspace_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_workspace_cards_workspace ON workspace_cards(workspace_id, created_at);
+
+    CREATE TABLE IF NOT EXISTS notebook_reports (
+      notebook_id TEXT PRIMARY KEY REFERENCES workspaces(id) ON DELETE CASCADE,
+      config_json TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      share_token TEXT UNIQUE,
+      snapshot_json TEXT,
+      published_at TEXT
+    );
   `)
 
   // Seed the default organization (idempotent)

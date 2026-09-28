@@ -10,7 +10,7 @@ import AgentMessageCell from './cells/AgentMessageCell.vue'
 import InsightCell from './cells/InsightCell.vue'
 import QuestionCell from './cells/QuestionCell.vue'
 import { useI18n } from '~/composables/useI18n'
-import type { NotebookCell, QueryCell as QueryCellType } from '~/types/notebook'
+import type { NotebookCell, ChartType, ChartCellMeta, EmbeddedChartConfig, QueryCell as QueryCellType } from '~/types/notebook'
 
 const { t } = useI18n()
 
@@ -38,7 +38,9 @@ const emit = defineEmits<{
   runQuestion: [cellId: string]
   moveCell: [cellId: string, direction: 'up' | 'down']
   askAboutCell: [cellId: string]
-  changeChartType: [cellId: string, type: 'line' | 'bar' | 'donut']
+  changeChartType: [cellId: string, type: ChartType]
+  updateChartConfig: [cellId: string, config: Partial<ChartCellMeta>]
+  updateEmbeddedChart: [cellId: string, key: string, config: EmbeddedChartConfig]
   refreshChart: [cellId: string]
   refreshResult: [cellId: string]
   reorderResultColumns: [cellId: string, order: string[]]
@@ -113,18 +115,20 @@ const hoveredCell = ref<string | null>(null)
           <ResultCell
             v-else-if="cell.cell_type === 'result'"
             :cell="(cell as any)"
-            :refreshing="refreshingResultIds?.includes(cell.id) ?? false"
+            :refreshing="(refreshingResultIds?.includes(cell.id) ?? false) || (!!runningCellId && cell.source_cell_id === runningCellId)"
             @ask-about="emit('askAboutCell', cell.id)"
             @refresh="emit('refreshResult', cell.id)"
             @reorder-columns="(order: string[]) => emit('reorderResultColumns', cell.id, order)"
             @update-dsl="(dsl: string) => emit('updateResultDsl', cell.id, dsl)"
             @ask-to-tweak="emit('askResultTweak', cell.id)"
+            @update-chart-config="(config) => emit('updateEmbeddedChart', cell.id, 'result', config)"
           />
           <ChartCell
             v-else-if="cell.cell_type === 'chart'"
             :cell="(cell as any)"
             :refreshing="refreshingChartIds?.includes(cell.id) ?? false"
             @ask-about="emit('askAboutCell', cell.id)"
+            @update-config="(config) => emit('updateChartConfig', cell.id, config)"
             @change-type="(type) => emit('changeChartType', cell.id, type)"
             @refresh="emit('refreshChart', cell.id)"
             @update-dsl="(idx: number | null, dsl: string) => emit('updateChartDsl', cell.id, idx, dsl)"
@@ -136,6 +140,7 @@ const hoveredCell = ref<string | null>(null)
             :running="runningCellId === cell.id"
             @save="emit('saveCell', cell.id, $event)"
             @run="emit('runQuestion', cell.id)"
+            @update-chart-config="(key, config) => emit('updateEmbeddedChart', cell.id, key, config)"
             @ask-about="emit('askAboutCell', cell.id)"
           />
           <AgentMessageCell

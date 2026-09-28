@@ -2,16 +2,15 @@
 import { ref, computed, watch, h } from 'vue'
 import {
   MessageOutlined,
-  LineChartOutlined,
-  BarChartOutlined,
-  PieChartOutlined,
   ReloadOutlined,
   CodeOutlined,
   ThunderboltOutlined
 } from '@ant-design/icons-vue'
 import ChartRenderer from '../ChartRenderer.vue'
+import ChartSettings from '../ChartSettings.vue'
+import { chartTypes } from '~/utils/chartEngine'
 import { useI18n } from '~/composables/useI18n'
-import type { ChartCell, ChartType } from '~/types/notebook'
+import type { ChartCell, ChartType, ChartCellMeta } from '~/types/notebook'
 
 const { t } = useI18n()
 
@@ -23,6 +22,7 @@ interface Props {
 }
 const props = defineProps<Props>()
 const emit = defineEmits<{
+  updateConfig: [config: Partial<ChartCellMeta>]
   askAbout: []
   changeType: [type: ChartType]
   refresh: []
@@ -66,6 +66,9 @@ const hasAnyDsl = canRefresh
 // changes until the user actively edits.
 
 const showDsl = ref(false)
+const showSettings = ref(false)
+const settingsDraft = ref<Partial<ChartCellMeta>>({})
+function openSettings() { settingsDraft.value = JSON.parse(JSON.stringify(meta.value)); showSettings.value = true }
 const drafts = ref<Record<string, string>>({})
 
 function toggleDsl() {
@@ -109,12 +112,6 @@ function saveSeries(idx: number) {
 
 // --- Chart type switch -----------------------------------------------------
 
-const typeOptions: { value: ChartType; icon: any; label: string }[] = [
-  { value: 'bar',   icon: BarChartOutlined,  label: 'Bar' },
-  { value: 'line',  icon: LineChartOutlined, label: 'Line' },
-  { value: 'donut', icon: PieChartOutlined,  label: 'Donut' }
-]
-
 function selectType(type: ChartType) {
   if (type === currentType.value) return
   emit('changeType', type)
@@ -150,22 +147,10 @@ function formatRowsForPreview(rows: Record<string, unknown>[]): string {
         <h3 v-if="meta.title" class="chart-title">{{ meta.title }}</h3>
       </div>
       <div class="chart-header-actions">
-        <div class="chart-type-switch" role="tablist">
-          <a-tooltip
-            v-for="opt in typeOptions"
-            :key="opt.value"
-            :title="opt.label"
-          >
-            <button
-              role="tab"
-              :aria-selected="currentType === opt.value"
-              :class="['type-btn', { 'type-btn--active': currentType === opt.value }]"
-              @click="selectType(opt.value)"
-            >
-              <component :is="h(opt.icon)" />
-            </button>
-          </a-tooltip>
-        </div>
+        <select aria-label="Chart type" :value="currentType" @change="selectType(($event.target as HTMLSelectElement).value as ChartType)">
+          <option v-for="opt in chartTypes" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+        </select>
+        <a-button size="small" @click="openSettings">Customize</a-button>
         <a-tooltip v-if="canShowDsl" :title="showDsl ? t('ui.chart.hideDsl') : t('ui.chart.showDsl')">
           <a-button
             size="small"
@@ -287,7 +272,12 @@ function formatRowsForPreview(rows: Record<string, unknown>[]): string {
       <div class="dsl-panel-foot">{{ hasAnyDsl ? t('ui.chart.dslHint') : t('ui.chart.dslAgentHint') }}</div>
     </div>
 
+    <a-modal v-model:open="showSettings" title="Customize visualization" ok-text="Apply changes" @ok="emit('updateConfig', settingsDraft); showSettings = false">
+      <label>Chart title<a-input v-model:value="settingsDraft.title" style="margin-bottom:16px" /></label>
+      <ChartSettings v-model="settingsDraft" />
+    </a-modal>
     <ChartRenderer
+      :options="meta"
       :type="currentType"
       :x-field="meta.xField"
       :y-field="meta.yField"
@@ -333,36 +323,9 @@ function formatRowsForPreview(rows: Record<string, unknown>[]): string {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
 }
-
-.chart-type-switch {
-  display: inline-flex;
-  border: 1px solid var(--rule);
-  border-radius: var(--r-sm);
-  overflow: hidden;
-  background: var(--paper);
-}
-.type-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 26px;
-  background: transparent;
-  border: none;
-  color: var(--muted);
-  cursor: pointer;
-  font-size: 13px;
-  transition: background 0.15s, color 0.15s;
-  border-right: 1px solid var(--rule);
-}
-.type-btn:last-child { border-right: none; }
-.type-btn:hover { background: var(--subtle); color: var(--ink); }
-.type-btn--active {
-  background: var(--ink);
-  color: var(--paper);
-}
-.type-btn--active:hover { background: var(--ink); color: var(--paper); }
+.chart-header-actions select { padding: 4px; border: 1px solid var(--rule); border-radius: 4px; background: var(--paper); max-width: 140px; }
 
 /* DSL panel */
 .dsl-panel {

@@ -25,6 +25,9 @@ const {
 } = useOrg()
 
 const hideAppChrome = ref(false)
+const publicReport = computed(() => route.path.startsWith('/reports/'))
+const reportPage = computed(() => publicReport.value || /^\/notebooks\/[^/]+\/report\/?$/.test(route.path))
+const chromeHidden = computed(() => hideAppChrome.value || reportPage.value)
 const sidebarCollapsed = ref(false)
 // Pages that scroll their own body (notebook detail) dispatch
 // `dendo:topbar-hidden` events with `{ hidden: true | false }`. The topbar
@@ -50,7 +53,7 @@ function handleTopbarHidden(event: Event) {
 
 onMounted(async () => {
   await initI18n()
-  await loadOrganizations()
+  if (!publicReport.value) await loadOrganizations()
   if (typeof window !== 'undefined') {
     const stored = localStorage.getItem('dendo_sidebar_collapsed')
     if (stored === '1') sidebarCollapsed.value = true
@@ -138,11 +141,11 @@ const dateLocale = computed(() => (locale.value === 'ja' ? 'ja-JP' : undefined))
 </script>
 
 <template>
-  <div class="app-shell" :class="{ 'app-shell--bare': hideAppChrome, 'app-shell--collapsed': sidebarCollapsed }">
+  <div class="app-shell" :class="{ 'app-shell--bare': chromeHidden, 'app-shell--collapsed': sidebarCollapsed && !chromeHidden }">
 
     <!-- Sidebar — "spine" of the journal -->
     <aside
-      v-if="!hideAppChrome"
+      v-if="!chromeHidden"
       class="ms-sidebar"
       :class="{ 'ms-sidebar--collapsed': sidebarCollapsed }"
       :aria-expanded="!sidebarCollapsed"
@@ -229,7 +232,7 @@ const dateLocale = computed(() => (locale.value === 'ja' ? 'ja-JP' : undefined))
     <!-- Content area -->
     <main class="ms-main">
       <div
-        v-if="!hideAppChrome"
+        v-if="!chromeHidden"
         class="ms-topbar"
         :class="{ 'ms-topbar--hidden': topbarHiddenByScroll }"
       >
@@ -248,7 +251,7 @@ const dateLocale = computed(() => (locale.value === 'ja' ? 'ja-JP' : undefined))
         </div>
       </div>
 
-      <div class="ms-content ms-scroll" :class="{ 'ms-content--bare': hideAppChrome }">
+      <div class="ms-content ms-scroll" :class="{ 'ms-content--bare': chromeHidden, 'ms-content--report': reportPage }">
         <NuxtPage />
       </div>
     </main>
@@ -634,6 +637,8 @@ const dateLocale = computed(() => (locale.value === 'ja' ? 'ja-JP' : undefined))
   height: 100vh;
   overflow: hidden;
 }
+
+.ms-content--report { overflow-y: auto; }
 
 /* Make Language switcher look paper-native */
 .ms-topbar :deep(.ant-btn) {

@@ -50,6 +50,8 @@ export interface ResultCellMeta {
    * visible. Empty / unset → use `columns` order.
    */
   columnOrder?: string[]
+  /** Presentation only; refreshed rows remain the source of chart data. */
+  chartConfig?: EmbeddedChartConfig
 }
 
 export interface ResultCell {
@@ -63,7 +65,31 @@ export interface ResultCell {
   updated_at: string
 }
 
-export type ChartType = 'line' | 'bar' | 'donut'
+export type ChartType = 'line' | 'area' | 'bar' | 'horizontal-bar' | 'stacked-bar' | 'pie' | 'donut' | 'scatter' | 'heatmap' | 'funnel' | 'metric'
+
+export interface ChartOptions {
+  yFields?: string[]
+  groupField?: string
+  aggregation?: 'sum' | 'average' | 'min' | 'max' | 'last'
+  numberFormat?: 'number' | 'compact' | 'percent' | 'currency'
+  currency?: string
+  decimals?: number
+  xAxisLabel?: string
+  yAxisLabel?: string
+  showLegend?: boolean
+  showLabels?: boolean
+  sort?: 'source' | 'ascending' | 'descending'
+  palette?: 'editorial' | 'ocean' | 'forest'
+  /** Optional reference value in the same units as the metric. */
+  target?: number
+}
+
+export interface EmbeddedChartConfig extends ChartOptions {
+  chartType?: ChartType
+  xField?: string
+  yField?: string
+  displayMode?: 'table' | 'chart'
+}
 
 /**
  * One labeled data set inside a multi-series chart. Each series comes from a
@@ -83,7 +109,7 @@ export interface ChartSeries {
   dsl?: string
 }
 
-export interface ChartCellMeta {
+export interface ChartCellMeta extends ChartOptions {
   chartType: ChartType
   title: string
   /**
@@ -175,6 +201,8 @@ export interface QuestionCellMeta {
   aggregations?: ChatAggregation[]
   /** Agent-built summary charts from the last run. */
   summaryCharts?: ChatSummaryChart[]
+  /** Per-source presentation, retained when saved queries are re-run. */
+  chartConfigs?: Record<string, EmbeddedChartConfig>
   /** ISO timestamp of the last successful run. */
   lastRunAt?: string | null
   /** Error message from the last failed run (cleared on success). */
